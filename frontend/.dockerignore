@@ -1,0 +1,12 @@
+.next/cache
+node_modules
+.env
+.env.*
+*.log
+.git
+.gitignore
+README.md
+Dockerfile
+.dockerignore
+prisma/dev.db
+prisma/*.db

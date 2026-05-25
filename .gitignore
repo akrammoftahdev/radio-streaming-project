@@ -1,0 +1,16 @@
+node_modules
+.next
+.expo
+.DS_Store
+dist
+build
+*.tar.gz
+
+backend-audio/debug-recordings/
+frontend/public/test-audio/
+frontend/public/uploads/
+backups/
+cloud-sql-proxy
+media/
+
+infra/gcp-service-account.json

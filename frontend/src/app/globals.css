@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+/* ── Base CSS variables (Next.js default — kept for compat) ──────────────────── */
+:root {
+  --background: #0f172a;
+  --foreground: #f8fafc;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-tajawal), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* ── EGONAIR Design Tokens ───────────────────────────────────────────────────── */
+/*                                                                                */
+/* Admin-controlled theme tokens — pages/components MUST use these instead of     */
+/* hardcoded primary/accent Tailwind colors (indigo/cyan/purple/blue).            */
+/* Values are overridden at runtime via <style> injected in layout.tsx when the   */
+/* admin saves custom colors in Admin Settings → Theme.                           */
+/*                                                                                */
+/* Token reference:                                                               */
+/*   --eg-primary  → main CTA / active / selected color (admin-settable)          */
+/*   --eg-accent   → secondary accent / gradient end (admin-settable)             */
+/*   --eg-bg       → page background (admin-settable)                             */
+/*   --eg-surface  → card / panel surface (admin-settable)                        */
+/*   --eg-text     → primary text (admin-settable)                                */
+:root {
+  /* Page backgrounds */
+  --eg-bg:           #0f172a;   /* slate-950 — main page background              */
+  --eg-surface:      #1e293b;   /* slate-800 — card / panel surface              */
+  --eg-surface-soft: #0f172a;   /* slate-950 — inset / recessed surface          */
+  --eg-surface-mid:  #1a2744;   /* between slate-900 and slate-950               */
+
+  /* Borders */
+  --eg-border:       #334155;   /* slate-700 — default border                    */
+  --eg-border-soft:  #1e293b;   /* slate-800 — subtle divider                    */
+
+  /* Text */
+  --eg-text:         #f1f5f9;   /* slate-100 — primary text                      */
+  --eg-text-muted:   #94a3b8;   /* slate-400 — secondary / label text            */
+  --eg-text-faint:   #475569;   /* slate-600 — disabled / hint text              */
+
+  /* Primary accent (admin-settable via darkPrimary/lightPrimary) */
+  --eg-primary:        #6366f1;              /* indigo-500 default                */
+  --eg-primary-soft:   rgba(99,102,241,0.15);
+  --eg-primary-border: rgba(99,102,241,0.40);
+
+  /* Secondary accent (admin-settable via darkAccent/lightAccent) */
+  --eg-accent:        #06b6d4;              /* cyan-500 default                   */
+  --eg-accent-soft:   rgba(6,182,212,0.15);
+  --eg-accent-border: rgba(6,182,212,0.40);
+
+  /* Semantic — NOT admin-settable; always recognisable */
+  --eg-success:      #34d399;   /* emerald-400                                   */
+  --eg-success-soft: rgba(52,211,153,0.12);
+  --eg-warning:      #fbbf24;   /* amber-400                                     */
+  --eg-warning-soft: rgba(251,191,36,0.12);
+  --eg-danger:       #f87171;   /* red-400                                       */
+  --eg-danger-soft:  rgba(248,113,113,0.12);
+
+  /* Radius tokens */
+  --eg-radius-sm:    0.5rem;    /* 8px  */
+  --eg-radius:       0.75rem;   /* 12px */
+  --eg-radius-lg:    1rem;      /* 16px */
+  --eg-radius-xl:    1.25rem;   /* 20px */
+}
+
+/* ── Global base styles ──────────────────────────────────────────────────────── */
+body {
+  background: var(--eg-bg);
+  color:      var(--eg-text);
+  font-family: var(--font-sans);
+}
+
+/* ── Smooth scrolling ────────────────────────────────────────────────────────── */
+html {
+  scroll-behavior: smooth;
+}

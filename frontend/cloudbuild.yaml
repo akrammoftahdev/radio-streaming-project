@@ -1,0 +1,19 @@
+steps:
+  # Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'europe-west1-docker.pkg.dev/egonair-stream-prod/egonair/frontend:latest'
+      - '--build-arg'
+      - 'SKIP_BASEPATH=1'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_WS_URL=$_WS_URL'
+      - '.'
+  # Push the Docker image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'europe-west1-docker.pkg.dev/egonair-stream-prod/egonair/frontend:latest'
+images:
+  - 'europe-west1-docker.pkg.dev/egonair-stream-prod/egonair/frontend:latest'
