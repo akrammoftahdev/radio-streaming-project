@@ -5,7 +5,7 @@ import * as SecureStore from "expo-secure-store";
 import { requestRecordingPermissionsAsync } from "expo-audio";
 import { colors, glassStyles } from "../../theme/colors";
 import { ChevronLeft, Mic, MicOff, Radio } from "lucide-react-native";
-import { AudioStream } from "../core/audioStream";
+import { AudioStream } from "../../core/audioStream";
 
 export default function StudioScreen() {
   const { stationId } = useLocalSearchParams();
