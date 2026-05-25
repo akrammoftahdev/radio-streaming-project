@@ -7,6 +7,7 @@ export interface AudioStreamOptions {
   bitsPerSample: number;
   audioSource: number;
   bufferSize: number;
+  wavFile: string;
 }
 
 const defaultOptions: AudioStreamOptions = {
@@ -14,7 +15,8 @@ const defaultOptions: AudioStreamOptions = {
   channels: 1,       // Mono
   bitsPerSample: 16, // 16-bit
   audioSource: 1,    // MediaRecorder.AudioSource.MIC on Android
-  bufferSize: 4096   // Chunk size
+  bufferSize: 4096,  // Chunk size
+  wavFile: 'temp.wav' // Required by Options
 };
 
 export class AudioStream {

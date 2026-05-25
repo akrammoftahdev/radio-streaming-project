@@ -17,6 +17,6 @@ export const glassStyles = {
     borderColor: "rgba(255, 255, 255, 0.1)",
     borderWidth: 1,
     borderRadius: 16,
-    overflow: "hidden",
+    overflow: "hidden" as const,
   },
 };
