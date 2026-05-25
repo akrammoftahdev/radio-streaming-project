@@ -15,6 +15,7 @@
       "bundleIdentifier": "com.anonymous.mobile-app"
     },
     "android": {
+      "package": "com.akrammoftah.radiostreamingproject",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -47,6 +48,9 @@
       "expo-font",
       "expo-web-browser",
       "expo-audio"
+    ],
+    "assetBundlePatterns": [
+      "**/*"
     ],
     "experiments": {
       "typedRoutes": true,
