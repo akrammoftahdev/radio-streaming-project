@@ -7,7 +7,6 @@ import jwt from "jsonwebtoken";
  * Returns the last N recordings for the authenticated presenter.
  * Query params:
  *   - take: number (default 10, max 50)
- *   - stationId: optional filter by station OR directDjRadio
  */
 export async function GET(req: Request) {
   try {
@@ -28,23 +27,12 @@ export async function GET(req: Request) {
 
     const { id: presenterId } = decoded;
 
-    // Parse query params
     const url = new URL(req.url);
     const take = Math.min(parseInt(url.searchParams.get("take") || "10"), 50);
-    const stationId = url.searchParams.get("stationId") || undefined;
 
-    // Build where clause — fetch ALL recordings for this presenter
-    // If stationId provided, try matching station OR directDjRadio
-    const where: any = { presenterId };
-    if (stationId) {
-      where.OR = [
-        { stationId },
-        { directDjRadioId: stationId },
-      ];
-    }
-
+    // Fetch ALL recordings for this presenter (no station filter)
     const recordings = await prisma.recording.findMany({
-      where,
+      where: { presenterId },
       orderBy: { startedAt: "desc" },
       take,
       select: {
@@ -61,7 +49,7 @@ export async function GET(req: Request) {
       },
     });
 
-    // Build playback URLs — recordings are served from backend-audio
+    // Build playback URLs
     const backendAudioUrl = process.env.BACKEND_AUDIO_URL || "https://studio.egonair.com";
     const result = recordings.map((r) => ({
       ...r,
