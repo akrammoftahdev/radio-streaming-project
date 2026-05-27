@@ -30,7 +30,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const take = Math.min(parseInt(url.searchParams.get("take") || "10"), 50);
 
-    // Fetch ALL recordings for this presenter (no station filter)
+    // Fetch ALL recordings for this presenter (same query as web studio)
     const recordings = await prisma.recording.findMany({
       where: { presenterId },
       orderBy: { startedAt: "desc" },
@@ -49,11 +49,12 @@ export async function GET(req: Request) {
       },
     });
 
-    // Build playback URLs
-    const backendAudioUrl = process.env.BACKEND_AUDIO_URL || "https://studio.egonair.com";
+    // Build playback URLs — same pattern as web studio:
+    // /api/recordings/<encodeURIComponent(localPath)>
+    const baseUrl = url.origin; // e.g. https://studio.egonair.com
     const result = recordings.map((r) => ({
       ...r,
-      playbackUrl: `${backendAudioUrl}/recordings/${r.localPath}`,
+      playbackUrl: `${baseUrl}/api/recordings/${encodeURIComponent(r.localPath)}`,
     }));
 
     return NextResponse.json(result);
