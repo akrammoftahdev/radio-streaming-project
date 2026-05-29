@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import StudioUI from "./studio-ui";
+import StudioUI from "./studio-ui-v3";
 import LogoutButton from "./logout-button";
 import { RecordingCompactList } from "@/components/recordings/RecordingPlayer";
 
@@ -23,9 +23,10 @@ interface PreFlightProps {
   presenterBreakCategories: Category[];
   adminAdCategories:        Category[];
   presenterAdCategories:    Category[];
+  sfxCategories?:           Category[];
   latestRecordings:         LatestRecording[];
   sessionEndMs?:            number;
-  scheduledStationId?:      string; // time-resolved station from server — forwarded to token/create
+  scheduledStationId?:      string;
 }
 
 export default function PreFlightScreen({
@@ -35,6 +36,7 @@ export default function PreFlightScreen({
   presenterBreakCategories,
   adminAdCategories,
   presenterAdCategories,
+  sfxCategories,
   latestRecordings,
   sessionEndMs,
   scheduledStationId,
@@ -78,6 +80,7 @@ export default function PreFlightScreen({
         presenterBreakCategories={presenterBreakCategories}
         adminAdCategories={adminAdCategories}
         presenterAdCategories={presenterAdCategories}
+        sfxCategories={sfxCategories}
         sessionEndMs={sessionEndMs}
         onExitStudio={() => setHasPassed(false)}
         scheduledStationId={scheduledStationId}

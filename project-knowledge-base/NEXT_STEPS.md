@@ -279,7 +279,9 @@ See `FUTURE_REQUIREMENTS.md §2` for full specification.
 
 ---
 
-## Group 5-Cloud — Cloud Run + GCE Deployment (CURRENT ACTIVE PHASE)
+## Group 5-Cloud — Cloud Run + GCE Deployment [HISTORICAL — Superseded by VPS Deployment]
+
+> **⚠️ HISTORICAL:** Cloud Run deployment has been superseded. The project now deploys to VPS at 195.35.48.184 (studio.egonair.com) via scp + pm2.
 
 **GCP infrastructure:** ✅ Provisioned | **Secrets:** ✅ Finalized | **Deploy:** ❌ Not executed
 **Command reference:** Brain artifact `cloudrun_deployment_prep.md`
@@ -287,8 +289,8 @@ See `FUTURE_REQUIREMENTS.md §2` for full specification.
 ### 5-CR-0 — Resolve blockers before any build ✅ RESOLVED IN PLAN (2026-04-30)
 
 > **FIX-007 RESOLVED:** `NEXT_PUBLIC_WS_URL` corrected to Cloud Run backend endpoint (Diamond Rule).
-> - `wss://egonair-frontend-729286791857.europe-west1.run.app/stream-ws` was the VPS-only proxy path — wrong for Cloud
-> - `wss://egonair-backend-audio-729286791857.europe-west1.run.app` is the correct final Cloud architecture endpoint (Diamond Rule)
+> - [HISTORICAL] `wss://egonair-frontend-729286791857.europe-west1.run.app/stream-ws` was the VPS-only proxy path
+> - [HISTORICAL] `wss://egonair-backend-audio-729286791857.europe-west1.run.app` was the Cloud architecture endpoint. No longer applicable.
 > - Studio mic will fail gracefully (connection refused) until backend-audio GCE + DNS is live — safe and expected
 > - Baking final value now avoids a second Docker rebuild when GCE is ready
 
@@ -331,24 +333,24 @@ See `FUTURE_REQUIREMENTS.md §2` for full specification.
 - Command: `DATABASE_URL="<unix-socket-url>" npx tsx prisma/seed.ts`
 
 **After seed → 5-CR-2c: Test login**
-- URL: `https://egonair-frontend-kjvmkgy5va-ew.a.run.app/stream/login`
+- [HISTORICAL] URL was: `https://egonair-frontend-kjvmkgy5va-ew.a.run.app/stream/login`
 - Credentials: `admin` / `admin123` (change immediately after first login)YAML env vars → redeploy so NextAuth login redirects work
 
 ### 5-CR-4 — Smoke test Cloud Run (admin login + dashboard)
 - Test login, admin dashboard — **do NOT test streaming yet**
 
-### 5-CR-5 — Database migration SQLite → Cloud SQL (requires explicit approval)
+### 5-CR-5 — Database migration SQLite → PostgreSQL [COMPLETED — now on VPS]
 ### 5-CR-6 — Deploy backend-audio to GCE VM (blocked until 5-CR-4 passes)
-### 5-CR-7 — DEPRECATED: egonair-backend-audio-729286791857.europe-west1.run.app DNS (Violates Diamond Rule - Use Cloud Run endpoints)
+### 5-CR-7 — [HISTORICAL] Cloud Run DNS (no longer in use)
 
 ---
 
 ## Group 5-VPS — Production Hardening (SUPERSEDED — preserved for reference only)
 
-> The steps below were the original VPS deployment plan. The project has pivoted to Cloud Run + GCE.
+> The steps below were the original VPS deployment plan. The project briefly used Cloud Run but has returned to VPS deployment at studio.egonair.com.
 > Do NOT execute these steps unless explicitly instructed by the user.
 
-**Original target:** `egonair-frontend-729286791857.europe-west1.run.app/stream` + `egonair-frontend-729286791857.europe-west1.run.app/stream-ws` (VPS LiteSpeed proxy)
+[HISTORICAL] Previously targeted `egonair-frontend-729286791857.europe-west1.run.app` (Cloud Run domain). Now: `studio.egonair.com`
 **Full plan:** See `brain/group_5_0_deployment_plan.md`
 
 ### 5.0 — VPS/cPanel Server Audit & Deployment Plan (✅ PLAN COMPLETE 2026-04-29)
@@ -384,10 +386,8 @@ See `FUTURE_REQUIREMENTS.md §2` for full specification.
 > **Goal:** Full end-to-end test on production. 10-point checklist.  
 > **Risk:** 🟢 LOW
 
-### 5.8 — Optional Postgres Migration
-> **Goal:** Replace SQLite with Postgres from existing docker-compose.yml.  
-> **Recommendation:** Keep SQLite + PM2 single-instance for launch; migrate if needed.  
-> **Risk:** 🟡 MEDIUM
+### 5.8 — PostgreSQL Migration [COMPLETED]
+> PostgreSQL migration completed. Database now runs on VPS (localhost:5432, database `egonair`). Previously used SQLite during development.
 
 ---
 

@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import StudioUI from "./studio-ui";
+import StudioUI from "./studio-ui-v3";
 import LogoutButton from "./logout-button";
 import { RecordingCompactList } from "@/components/recordings/RecordingPlayer";
 import Link from "next/link";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 type DirectDjRadioOption = {
   id:         string;
@@ -29,12 +30,13 @@ interface Props {
   presenterBreakCategories: Category[];
   adminAdCategories:        Category[];
   presenterAdCategories:    Category[];
+  sfxCategories?:           Category[];
   latestRecordings:         LatestRecording[];
 }
 
 export default function DirectDjPreFlightScreen({
   radios, bgCategories, songCategories, adminBreakCategories,
-  presenterBreakCategories, adminAdCategories, presenterAdCategories, latestRecordings,
+  presenterBreakCategories, adminAdCategories, presenterAdCategories, sfxCategories, latestRecordings,
 }: Props) {
   const [hasPassed,       setHasPassed]       = useState(false);
   const [mounted,         setMounted]         = useState(false);
@@ -108,6 +110,7 @@ export default function DirectDjPreFlightScreen({
         presenterBreakCategories={presenterBreakCategories}
         adminAdCategories={adminAdCategories}
         presenterAdCategories={presenterAdCategories}
+        sfxCategories={sfxCategories}
         sessionEndMs={undefined}
         onExitStudio={() => { setHasPassed(false); setConnecting(false); setConnectError(null); }}
         directDjRadioId={selectedRadioId}
@@ -164,8 +167,8 @@ export default function DirectDjPreFlightScreen({
 
       <div className="z-10 w-full max-w-md flex flex-col gap-4">
 
-        <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-8 w-full text-center shadow-2xl relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-amber-500 to-orange-400" />
+        <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-8 w-full text-center shadow-2xl relative">
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-amber-500 to-orange-400 rounded-t-3xl" />
           <div className="flex items-center justify-center gap-2 mb-1">
             <span className="text-lg">🎙️</span>
             <h1 className="text-2xl font-bold text-neutral-100">DJ مباشر</h1>
@@ -203,15 +206,17 @@ export default function DirectDjPreFlightScreen({
 
           <div className="mb-6 text-right">
             <label className="block text-xs font-medium text-neutral-400 mb-2">اختر الإذاعة للبث</label>
-            <select
+            <SearchableSelect
               value={selectedRadioId}
-              onChange={e => setSelectedRadioId(e.target.value)}
-              className="w-full bg-neutral-950 border border-amber-500/30 text-neutral-200 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-amber-500/40 transition-all cursor-pointer"
-            >
-              {radios.map(r => (
-                <option key={r.id} value={r.id}>{r.radioName}</option>
-              ))}
-            </select>
+              onChange={(val) => setSelectedRadioId(val)}
+              options={radios.map(r => ({
+                id: r.id,
+                label: r.radioName,
+                subLabel: `${r.djUsername}@${r.host}:${r.port} · ${r.bitrate}kbps`
+              }))}
+              placeholder="اختر الإذاعة..."
+              searchPlaceholder="ابحث عن الإذاعة بالاسم أو المضيف..."
+            />
             {selectedRadio && (
               <p className="text-xs text-neutral-600 mt-1.5 font-mono text-left" dir="ltr">
                 {selectedRadio.djUsername}@{selectedRadio.host}:{selectedRadio.port}

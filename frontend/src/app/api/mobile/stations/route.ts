@@ -22,6 +22,8 @@ export async function GET(req: Request) {
     const { id, role } = decoded;
 
     let stations: any[] = [];
+    let presenterMode: string | null = null;
+
     if (role === "ADMIN") {
       stations = await prisma.station.findMany({
         where: { isActive: true },
@@ -49,6 +51,7 @@ export async function GET(req: Request) {
         if (role === "STATION_MANAGER") {
           stations = user.stationManagerAssignments.map(ma => ma.station);
         } else if (role === "PRESENTER") {
+          presenterMode = user.presenterMode || "SINGLE_STATION";
           if (user.presenterMode === "DIRECT_DJ") {
             stations = user.directDjRadios.map(djr => ({
               id: djr.id,
@@ -62,7 +65,7 @@ export async function GET(req: Request) {
       }
     }
 
-    return NextResponse.json(stations);
+    return NextResponse.json({ stations, presenterMode });
   } catch (error) {
     console.error("Mobile Stations API Error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

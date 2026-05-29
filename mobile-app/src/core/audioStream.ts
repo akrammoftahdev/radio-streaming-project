@@ -15,13 +15,13 @@ const defaultOptions: AudioStreamOptions = {
   channels: 1,       // Mono
   bitsPerSample: 16, // 16-bit
   audioSource: 1,    // MediaRecorder.AudioSource.MIC on Android
-  bufferSize: 4096,  // Chunk size
+  bufferSize: 8192,  // 8192 is stable for iOS hardware audio queue (185ms chunks)
   wavFile: 'temp.wav' // Required by Options
 };
 
 export class AudioStream {
   private static isInitialized = false;
-  private static listeners: ((data: Buffer) => void)[] = [];
+  private static listeners: ((data: string) => void)[] = [];
 
   static init(options: Partial<AudioStreamOptions> = {}) {
     if (this.isInitialized) return;
@@ -31,9 +31,8 @@ export class AudioStream {
     
     // LiveAudioStream outputs Base64 encoded string chunks
     LiveAudioStream.on('data', (data: string) => {
-      // Decode Base64 to binary Buffer
-      const buffer = Buffer.from(data, 'base64');
-      this.listeners.forEach(listener => listener(buffer));
+      // Send raw base64 string directly to avoid React Native binary bridge bottlenecks
+      this.listeners.forEach(listener => listener(data));
     });
   }
 
@@ -46,7 +45,7 @@ export class AudioStream {
     LiveAudioStream.stop();
   }
 
-  static onData(listener: (data: Buffer) => void) {
+  static onData(listener: (data: string) => void) {
     this.listeners.push(listener);
     return () => {
       this.listeners = this.listeners.filter(l => l !== listener);

@@ -162,6 +162,7 @@ export default async function StudioServerPage() {
         presenterBreakCategories={mapCats('BREAK', 'PRESENTER', userId)}
         adminAdCategories={mapCats('AD', 'ADMIN')}
         presenterAdCategories={mapCats('AD', 'PRESENTER', userId)}
+        sfxCategories={mapCats('SFX', 'ADMIN')}
         latestRecordings={latestRecordings}
       />
     );
@@ -264,6 +265,7 @@ export default async function StudioServerPage() {
     const presenterBreakCategories = mapCats("BREAK",      "PRESENTER", userId);
     const adminAdCategories        = mapCats("AD",         "ADMIN");
     const presenterAdCategories    = mapCats("AD",         "PRESENTER", userId);
+    const sfxCategories            = mapCats("SFX",        "ADMIN");
 
     const latestRecordings = await prisma.recording.findMany({
       where:   { presenterId: userId },
@@ -280,6 +282,7 @@ export default async function StudioServerPage() {
         presenterBreakCategories={presenterBreakCategories}
         adminAdCategories={adminAdCategories}
         presenterAdCategories={presenterAdCategories}
+        sfxCategories={sfxCategories}
         latestRecordings={latestRecordings}
         sessionEndMs={unified.endDatetime.getTime()}
         scheduledStationId={unified.stationId ?? undefined}

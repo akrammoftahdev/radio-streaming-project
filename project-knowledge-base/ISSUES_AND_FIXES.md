@@ -138,14 +138,13 @@ The current approach is intentionally lightweight.
 
 **Symptom:** A deployment configuration referenced Firestore, causing connection failures.
 
-**Root Cause:** The project uses SQLite (via Prisma), not Firestore. A stale Firebase configuration
+**Root Cause:** The project uses PostgreSQL (via Prisma), not Firestore. Previously SQLite during development. A stale Firebase configuration
 was applied.
 
-**Fix Applied:** Confirmed the correct database is SQLite at `frontend/prisma/dev.db`.
+**Fix Applied:** [HISTORICAL] During development, the database was SQLite at `frontend/prisma/dev.db`. Now PostgreSQL on VPS (localhost:5432, database `egonair`).
 Firestore/Firebase configs removed from active configuration.
 
-**Do Not Regress:** Do not introduce Firestore or any Firebase SDK into this project. The database
-stack is Prisma + SQLite (dev) with a planned migration path to PostgreSQL (production).
+**Do Not Regress:** Do not introduce Firestore or any Firebase SDK into this project. The database stack is Prisma + PostgreSQL (production on VPS). Previously used SQLite during development.
 
 ---
 
@@ -174,25 +173,25 @@ handshake succeeded at `radio.socialgenix.com:4896`. See CURRENT_STATUS.md verif
 **Status:** RESOLVED — 2026-04-30 (plan corrected; deploy not yet executed)  
 **Affected file:** Build commands in `cloudrun_deployment_prep.md`
 
-**Symptom (not yet triggered — deploy not executed):** The prepared Phase B build command baked `wss://egonair-frontend-729286791857.europe-west1.run.app/stream-ws` into the browser JS bundle as `NEXT_PUBLIC_WS_URL`. This value is wrong for the Cloud architecture.
+**Symptom (not yet triggered — deploy not executed):** The prepared Phase B build command baked `wss://egonair-frontend-729286791857.europe-west1.run.app/stream-ws` into the browser JS bundle as `NEXT_PUBLIC_WS_URL`. This value is wrong for the Cloud architecture. [HISTORICAL — Cloud Run era]
 
 **Root Cause:**
 - `/stream-ws` was the original VPS reverse-proxy WebSocket path plan (LiteSpeed proxy → `ws://127.0.0.1:4001`)
-- The Cloud architecture uses the Cloud Run URL as the WebSocket domain (Diamond Rule: 100% Google Cloud, no egonair-frontend-729286791857.europe-west1.run.app dependencies)
+- [HISTORICAL] The Cloud architecture used the Cloud Run URL as the WebSocket domain (Diamond Rule: 100% Google Cloud, no egonair-frontend-729286791857.europe-west1.run.app dependencies)
 - We use Cloud Run endpoints directly. No DNS configuration is needed for the backend.
 
 **Fix Applied (2026-04-30):**  
 All Phase B commands in `cloudrun_deployment_prep.md` (conversation `f156b216`) corrected to:  
 ```
-NEXT_PUBLIC_WS_URL="wss://egonair-backend-audio-729286791857.europe-west1.run.app"
+[HISTORICAL] NEXT_PUBLIC_WS_URL="wss://egonair-backend-audio-729286791857.europe-west1.run.app"
 ```
 This is the final production Cloud Run endpoint following the Diamond Rule. The Studio mic button will fail gracefully if the backend is unreachable. Using the direct Cloud Run URL avoids DNS dependency issues.
 
-**Do Not Regress:** Never bake `wss://egonair-frontend-729286791857.europe-west1.run.app/stream-ws` into the Docker image. That path belongs to the VPS deployment plan only.
+**Do Not Regress:** [HISTORICAL — Cloud Run deployment] Never bake `wss://egonair-frontend-729286791857.europe-west1.run.app/stream-ws` into the Docker image. Current deployment is VPS at studio.egonair.com.
 
 ---
 
-## FIX-008 — cloudrun-frontend.yaml Not Available in Cloud Shell by Default
+## FIX-008 — cloudrun-frontend.yaml Not Available in Cloud Shell by Default [HISTORICAL — Cloud Shell/Cloud Run]
 
 **Status:** RESOLVED — 2026-04-30 (plan corrected; deploy not yet executed)  
 **Affected command:** Phase C (`gcloud run services replace cloudrun-frontend.yaml`)
@@ -245,7 +244,7 @@ Error: ENCRYPTION_KEY must be a 32-character string in environment variables.
 Failed to collect page data for /api/internal/audio-token/validate
 ```
 
-**Root Cause:** `encryption.ts` had a top-level `if` guard that threw at **module load time**. During `next build`, Next.js statically collects page data for all routes, which requires importing API route modules. Importing `validate/route.ts` imports `encryption.ts`, which immediately throws because `ENCRYPTION_KEY` is not present at build time (it's a runtime secret injected by Cloud Run).
+**Root Cause:** `encryption.ts` had a top-level `if` guard that threw at **module load time**. During `next build`, Next.js statically collects page data for all routes, which requires importing API route modules. Importing `validate/route.ts` imports `encryption.ts`, which immediately throws because `ENCRYPTION_KEY` is not present at build time (it's a runtime secret (previously injected by Cloud Run, now in VPS .env)).
 
 **Fix Applied:**  
 Removed the module-level `const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY` and the top-level `if` throw. Replaced with a `getKey()` function that is called inside `encrypt()` and `decrypt()` only. The validation is identical — 32-char check, same error message — but it now runs at call time (request time), not at import time.
@@ -275,7 +274,7 @@ Please manually install OpenSSL.
 1. **`schema.cloud.prisma` generator block:** Added `binaryTargets = ["native", "linux-musl-openssl-3.0.x"]`. `linux-musl-openssl-3.0.x` is the correct Prisma binary target for Node 20 Alpine (musl libc + OpenSSL 3). `native` keeps local Mac dev working.
 2. **`Dockerfile` builder + runner stages:** Added `openssl` to `apk add` in both the `builder` stage (needed for `prisma generate`) and the `runner` stage (needed at container startup).
 
-**Do Not Regress:** Do not remove `binaryTargets` from `schema.cloud.prisma`. Do not remove `openssl` from the Alpine `apk add` lines in Dockerfile. Do not apply this binaryTarget to `schema.prisma` (the local SQLite schema) — it is only needed for the Cloud build.
+**Do Not Regress:** Do not remove `binaryTargets` from `schema.cloud.prisma`. Do not remove `openssl` from the Alpine `apk add` lines in Dockerfile. Do not apply this binaryTarget to `schema.prisma` (the primary schema). [HISTORICAL: `schema.cloud.prisma` was used for Cloud Run builds.]
 
 ---
 
@@ -352,7 +351,7 @@ gcloud run services update egonair-frontend --project=egonair-stream-prod --regi
 - ✅ Cloud Run service `egonair-frontend` deployed (`europe-west1`)
 - ✅ Public access enabled
 - ✅ `/stream/login` returns HTTP/2 200 — page loads
-- ✅ Cloud Run URL confirmed: `https://egonair-frontend-kjvmkgy5va-ew.a.run.app`
+- ✅ [HISTORICAL] Cloud Run URL was: `https://egonair-frontend-kjvmkgy5va-ew.a.run.app`
 
 ### What Failed Today
 - ❌ Login: Prisma `P1001` — `egonair-db-url` secret uses TCP format, Cloud Run needs Unix socket
@@ -366,7 +365,7 @@ gcloud run services update egonair-frontend --project=egonair-stream-prod --regi
 2. Verify: `gcloud config list --format="table(core.account,core.project)"` — if wrong account, STOP
 3. Apply FIX-011 (3 commands above — no build, no deploy, no migration)
 4. Wait for Cloud Run to restart (~30 seconds)
-5. Test: `curl -sI https://egonair-frontend-kjvmkgy5va-ew.a.run.app/stream/login | head -5`
+5. [HISTORICAL] Test: `curl -sI https://egonair-frontend-kjvmkgy5va-ew.a.run.app/stream/login | head -5`
 6. If still P1001 after fix — stop and report
 7. If P1001 gone — next step is `prisma migrate deploy` (separate approval required)
 

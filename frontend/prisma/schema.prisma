@@ -3,10 +3,8 @@ generator client {
 }
 
 datasource db {
-  // LOCAL DEV + VPS: provider = "sqlite", DATABASE_URL = "file:./dev.db"
-  // CLOUD BUILD: schema.cloud.prisma (postgresql) is copied over this file
-  //              by the Dockerfile before `npm run build` + `prisma generate`.
-  // Do NOT change this to "postgresql" here — it breaks local dev and VPS.
+  // LOCAL DEV ONLY: sqlite (DATABASE_URL = "file:./dev.db")
+  // VPS / PRODUCTION: use schema.cloud.prisma (postgresql)
   provider = "sqlite"
   url      = env("DATABASE_URL")
 }
@@ -40,6 +38,8 @@ model User {
   programs                 Program[]
   stationManagerAssignments StationManagerAssignment[]
   directDjRadios           DirectDjRadio[]
+  dspPresets               DspPreset[]           // custom DSP presets created by this presenter
+  activeDspPresetId        String?               @map("active_dsp_preset_id")
 }
 
 model PresenterProfile {
@@ -111,6 +111,7 @@ model SonicPanelCredential {
 //   SONG       — full songs (auto-fade when mic opens)
 //   BREAK      — station break / jingle
 //   AD         — advertisement / promo
+//   SFX        — sound effects (riser, boom, whoosh, impact, applause)
 //
 // MediaCategory.ownerType values:
 //   ADMIN      — station-wide content managed by admin
@@ -381,10 +382,10 @@ model PresenterStation {
   @@index([stationId])
 }
 
-// ── RecurrenceType values (String \u2014 SQLite has no native enum) ────────────────
+// ── RecurrenceType values (stored as String for flexibility) ─────────────────
 // Valid: DAILY | WEEKLY | SELECTED_DAYS | ONE_TIME
 
-// ── ExceptionType values (String \u2014 SQLite has no native enum) ─────────────────
+// ── ExceptionType values (stored as String for flexibility) ──────────────────
 // Valid: EXTRA_EPISODE | SPECIAL_EVENT | CANCELLED | RESCHEDULED
 
 // ── Program ───────────────────────────────────────────────────────────────────
@@ -592,4 +593,28 @@ model SystemSettings {
   updatedBy       String?                                 @map("updated_by")
   createdAt       DateTime @default(now())                @map("created_at")
   updatedAt       DateTime @updatedAt                     @map("updated_at")
+}
+
+// ── DSP Mic Presets ─────────────────────────────────────────────────────────
+// Stores per-presenter mic processing presets (EQ, compressor, gate, etc.).
+// System presets have isSystem=true and presenterId=null.
+model DspPreset {
+  id          String   @id @default(uuid())
+  name        String
+  // SYSTEM presets are read-only defaults; USER presets are per-presenter.
+  isSystem    Boolean  @default(false) @map("is_system")
+  presenterId String?  @map("presenter_id")
+  // JSON blob storing all filter parameters
+  // Schema: { hpFreq, lpFreq, eqLow, eqMid, eqHigh, eqLowFreq, eqMidFreq, eqHighFreq,
+  //           compThreshold, compRatio, compAttack, compRelease, compKnee,
+  //           limiterThreshold, gateThreshold, gateAttack, gateRelease,
+  //           deEsserFreq, deEsserQ, deEsserReduction,
+  //           reverbWet, reverbDecay, delayTime, delayFeedback, delayWet,
+  //           warmthAmount, stereoWidth }
+  params      String   @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  presenter   User?    @relation(fields: [presenterId], references: [id], onDelete: Cascade)
+
+  @@index([presenterId])
 }

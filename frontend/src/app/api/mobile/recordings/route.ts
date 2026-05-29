@@ -49,12 +49,12 @@ export async function GET(req: Request) {
       },
     });
 
-    // Build playback URLs — same pattern as web studio:
-    // /api/recordings/<encodeURIComponent(localPath)>
+    // Build playback URLs using mobile-specific route with JWT in query string.
+    // The audio player can't send Authorization headers, so we pass the token in the URL.
     const baseUrl = url.origin; // e.g. https://studio.egonair.com
     const result = recordings.map((r) => ({
       ...r,
-      playbackUrl: `${baseUrl}/api/recordings/${encodeURIComponent(r.localPath)}`,
+      playbackUrl: `${baseUrl}/api/mobile/recordings/play/${encodeURIComponent(r.localPath)}?token=${token}`,
     }));
 
     return NextResponse.json(result);

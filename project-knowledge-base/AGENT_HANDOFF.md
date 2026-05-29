@@ -2,14 +2,14 @@
 
 ---
 
-## ⏸️ CLOUD DEPLOYMENT PAUSED — Local Development Mode (2026-04-30 22:50)
+## ⏸️ HISTORICAL — Cloud Deployment Phase (Completed, Now on VPS) (2026-04-30 22:50)
 
 ### Immediate Context for Next Agent Session
 
-**DO NOT** attempt any Cloud Shell, Cloud Build, or Cloud Run action until explicitly authorized.
+**HISTORICAL:** Cloud deployment was previously attempted but the project has since migrated fully to VPS deployment at studio.egonair.com.
 
 **Cloud state (stable, do not touch):**
-- Cloud Run frontend: LIVE at `https://egonair-frontend-kjvmkgy5va-ew.a.run.app/stream/login` (HTTP 200)
+- [HISTORICAL] Cloud Run frontend was deployed at `https://egonair-frontend-kjvmkgy5va-ew.a.run.app/stream/login`. Now superseded by VPS at studio.egonair.com
 - Cloud SQL: schema applied, admin user seeded (`admin` / `admin123`)
 - Running image revision: `egonair-frontend-00003-ccj` — **does NOT include recent local fixes**
 - Login on Cloud Run URL: **BROKEN** (Auth.js basePath mismatch)
@@ -68,7 +68,7 @@ Failure to update these files breaks continuity for the next agent.
 - **Admin** can manage presenter accounts, schedule broadcast slots, manage the media library (categories + tracks), set SonicPanel (SHOUTcast) DJ credentials per presenter, and monitor live sessions.
 - **Presenters** log in, wait for their scheduled slot, enter a studio UI, open their microphone, and broadcast live via a WebSocket → FFmpeg → SHOUTcast TCP pipeline.
 
-**Stack:** Next.js 15 (App Router) + NextAuth v5 + Prisma/SQLite + Node.js WebSocket service + FFmpeg
+**Stack:** Next.js 15 (App Router) + NextAuth v5 + Prisma/PostgreSQL + Node.js WebSocket service + FFmpeg
 
 ---
 
@@ -76,8 +76,8 @@ Failure to update these files breaks continuity for the next agent.
 
 **Phase 5** — Production Deployment.
 **Status:** 5.0 ✅ 5.1 ✅ 5.2 ✅ 5.4 ✅ 5.4.1 ✅ 5.5-A ✅ 5.5-B ✅ 5.5-C ✅ FULL LOGIN WORKING.
-**NEXTAUTH_URL:** `https://egonair-frontend-729286791857.europe-west1.run.app/stream`
-**AUTH_URL:** `https://egonair-frontend-729286791857.europe-west1.run.app` (domain-only — critical for next-auth v5 beta.31 + basePath)
+**NEXTAUTH_URL:** `https://studio.egonair.com` (previously was Cloud Run URL)
+**AUTH_URL:** `https://studio.egonair.com` (previously was Cloud Run URL)
 **Next:** Presenter login + studio broadcasting test.
 
 ---
@@ -108,7 +108,7 @@ Failure to update these files breaks continuity for the next agent.
 **What was done:**
 - Read all 4 KB files + `cloudrun_deployment_prep.md` + `deploy/cloudrun-frontend.yaml` + `frontend/Dockerfile` + `frontend/next.config.ts` + `frontend/prisma/schema.cloud.prisma`
 - Confirmed `deploy/cloudrun-frontend.yaml` is already correct (Blockers 1+2 from prior session applied)
-- **Resolved FIX-007:** `NEXT_PUBLIC_WS_URL` corrected to the Cloud Run endpoint `wss://egonair-backend-audio-729286791857.europe-west1.run.app` (Diamond Rule: 100% Google Cloud, zero egonair-frontend-729286791857.europe-west1.run.app dependencies).
+- **Resolved FIX-007:** [HISTORICAL] `NEXT_PUBLIC_WS_URL` was corrected to the Cloud Run endpoint. Now uses VPS WebSocket endpoint.
 - **Resolved FIX-008:** `deploy/cloudrun-frontend.yaml` delivery to Cloud Shell solved by uploading to GCS in Phase B1 alongside the source archive, then `gsutil cp` in Phase C. No manual file upload button needed.
 - **Updated** `cloudrun_deployment_prep.md` brain artifact (this session's conversation ID: `f156b216`) with all corrected Phase A–D commands
 - **No new blockers found.**
@@ -197,14 +197,9 @@ Failure to update these files breaks continuity for the next agent.
 
 ## Immediate Next Action
 
-> **⚠️ MANDATORY FIRST CHECK — DO NOT SKIP**
-> Before running any command in Cloud Shell, verify active account:
-> ```
-> gcloud config list --format="table(core.account,core.project)"
-> ```
-> **Required account:** `akrammoftahyt@gmail.com`
-> **If wrong account:** STOP immediately. Do not execute anything.
-> **To switch:** `gcloud config set account akrammoftahyt@gmail.com`
+> **HISTORICAL (Cloud Run era):** The following gcloud commands were used during the Cloud Run deployment phase. The project now deploys to VPS at 195.35.48.184.
+>
+> Previously required checking: `gcloud config list`, account: `akrammoftahyt@gmail.com`
 
 ### Step FIX-011 — Correct `egonair-db-url` secret (Unix socket format)
 
@@ -291,28 +286,29 @@ Test login at `https://egonair-frontend-kjvmkgy5va-ew.a.run.app/stream/login`
 **Group 5.5-B vhost confirmed + proxy config prepared.**
 
 **Confirmed vhost facts:**
-- Primary domain (`servername`): `egonair-frontend-729286791857.europe-west1.run.app` ✅ (NOT egyonair.com — that domain is dead)
-- SSL vhost servername: `egonair-frontend-729286791857.europe-west1.run.app` ✅
-- ServerAlias: `mail.egonair-frontend-729286791857.europe-west1.run.app`, `www.egonair-frontend-729286791857.europe-west1.run.app`
-- Document root: `/home/egyona/public_html`
-- `whmapi1` requires root (not accessible from `egyona` user)
+- [HISTORICAL] Primary domain was `egonair-frontend-729286791857.europe-west1.run.app` on old VPS. Current domain: `studio.egonair.com`
+- [HISTORICAL] SSL vhost and ServerAlias were configured for the Cloud Run domain. Now using studio.egonair.com.
+- [HISTORICAL] Document root was `/home/egyona/public_html` on old VPS. Current path: `/var/www/egonair/` on VPS 195.35.48.184
+- [HISTORICAL] whmapi1 was used on old cPanel VPS with user `egyona`. No longer applicable.
 
 **Proxy config artifact:** `group_55b_proxy_commands.md`
 
-**Include file target paths (root required):**
-```
-/etc/apache2/conf.d/userdata/ssl/2_4/egyona/egonair-frontend-729286791857.europe-west1.run.app/egonair_stream.conf
-/usr/local/apache/conf/userdata/ssl/2_4/egyona/egonair-frontend-729286791857.europe-west1.run.app/egonair_stream.conf
-```
-
-**Root commands sequence (WHM Terminal):**
-1. `mkdir -p /etc/apache2/conf.d/userdata/ssl/2_4/egyona/egonair-frontend-729286791857.europe-west1.run.app`
-2. `mkdir -p /usr/local/apache/conf/userdata/ssl/2_4/egyona/egonair-frontend-729286791857.europe-west1.run.app`
-3. Write proxy `.conf` file (see artifact)
-4. `httpd -t` — must say `Syntax OK` before proceeding
-5. `/usr/local/cpanel/bin/whmapi1 build_apache_conf`
-6. `/usr/sbin/httpd -k graceful`
-7. `curl -I https://egonair-frontend-729286791857.europe-west1.run.app/stream/login` — expect HTTP 200/307
+> **HISTORICAL (Old egyona VPS + Cloud Run proxy):**
+>
+> **Include file target paths (root required):**
+> ```
+> /etc/apache2/conf.d/userdata/ssl/2_4/egyona/egonair-frontend-729286791857.europe-west1.run.app/egonair_stream.conf
+> /usr/local/apache/conf/userdata/ssl/2_4/egyona/egonair-frontend-729286791857.europe-west1.run.app/egonair_stream.conf
+> ```
+>
+> **Root commands sequence (WHM Terminal):**
+> 1. `mkdir -p /etc/apache2/conf.d/userdata/ssl/2_4/egyona/egonair-frontend-729286791857.europe-west1.run.app`
+> 2. `mkdir -p /usr/local/apache/conf/userdata/ssl/2_4/egyona/egonair-frontend-729286791857.europe-west1.run.app`
+> 3. Write proxy `.conf` file (see artifact)
+> 4. `httpd -t` — must say `Syntax OK` before proceeding
+> 5. `/usr/local/cpanel/bin/whmapi1 build_apache_conf`
+> 6. `/usr/sbin/httpd -k graceful`
+> 7. `curl -I https://egonair-frontend-729286791857.europe-west1.run.app/stream/login` — expect HTTP 200/307
 
 **Rollback:** Delete the `.conf` file + rebuild + graceful reload.
 
@@ -340,7 +336,7 @@ LISTEN 127.0.0.1:3000   ← egonair-frontend (localhost only) ✓
 **PM2 process state:**
 - `egonair-frontend` ID=0, PID=920245, port 3000 (127.0.0.1 only), 0 restarts ✅
 - `egonair-audio` ID=1, PID=907642, port 4001 (* all interfaces), 0 restarts ✅
-- PM2 saved: `/home/egyona/.pm2/dump.pm2`
+- [HISTORICAL] PM2 was saved at `/home/egyona/.pm2/dump.pm2` on old VPS
 
 **Internal HTTP tests passed:**
 - `GET http://127.0.0.1:3000/stream/login` → `200 OK` ✅
@@ -357,7 +353,7 @@ SHOUTcast live: ENABLED
 
 **Fixes applied in Group 5.4:**
 - Added `AUTH_TRUST_HOST=true` to frontend `.env` (next-auth v5 UntrustedHost fix)
-- Added `AUTH_URL=https://egonair-frontend-729286791857.europe-west1.run.app/stream` to frontend `.env`
+- [HISTORICAL] AUTH_URL was set to Cloud Run URL. Now: `AUTH_URL=https://studio.egonair.com`
 - `deploy/frontend.env.production` template updated with both vars
 - `ecosystem.config.js` updated to use absolute release paths (avoids symlink race)
 
@@ -368,7 +364,7 @@ SHOUTcast live: ENABLED
 **Next step: Group 5.5 — Configure LiteSpeed proxy.**
 
 **SSL must be active first:**
-- Verify: `https://egonair-frontend-729286791857.europe-west1.run.app` loads over HTTPS
+- [HISTORICAL] SSL was verified against Cloud Run URL. Now: `https://studio.egonair.com`
 - If not: enable cPanel AutoSSL (Manage SSL → Run AutoSSL)
 - `wss://` will NOT work without HTTPS
 
@@ -377,13 +373,13 @@ SHOUTcast live: ENABLED
 - `/stream-ws` → `ws://127.0.0.1:4001` (WebSocket upgrade)
 
 **Critical facts:**
-- cPanel user: `egyona`
-- Release: `/home/egyona/apps/egonair-stream/releases/20260429-101531`
-- Current symlink: `/home/egyona/apps/egonair-stream/current`
-- prod.db: `/home/egyona/apps/egonair-stream/shared/prod.db`
-- FFmpeg: `/home/egyona/bin/ffmpeg`
-- Node 20: `source ~/.nvm/nvm.sh && nvm use 20`
-- PM2 ecosystem: `/home/egyona/apps/egonair-stream/ecosystem.config.js`
+- [HISTORICAL] cPanel user was `egyona` on old VPS. Current: root@195.35.48.184
+- [HISTORICAL] Release: `/home/egyona/apps/egonair-stream/releases/20260429-101531`
+- [HISTORICAL] Current symlink: `/home/egyona/apps/egonair-stream/current`
+- [HISTORICAL] prod.db: `/home/egyona/apps/egonair-stream/shared/prod.db`
+- [HISTORICAL] FFmpeg: `/home/egyona/bin/ffmpeg`
+- [HISTORICAL] Node 20: `source ~/.nvm/nvm.sh && nvm use 20`
+- [HISTORICAL] PM2 ecosystem: `/home/egyona/apps/egonair-stream/ecosystem.config.js`
 - Frontend port: 3000 (127.0.0.1 only)
 - Backend-audio port: 4001 (all interfaces — must be firewalled)
 - Secrets in place on VPS; not logged here
@@ -407,7 +403,7 @@ SHOUTcast live: ENABLED
 6. **SHOUTcast handshake is sensitive.** See `ISSUES_AND_FIXES.md FIX-003` for the exact format.
    Do not change line endings or HTTP version.
 
-7. **The database is SQLite** at `frontend/prisma/dev.db`. Do not introduce Firestore or Firebase.
+7. **The database is PostgreSQL** on VPS (localhost:5432, database `egonair`). Previously SQLite during development. Do not introduce Firestore or Firebase.
 
 ---
 
@@ -742,7 +738,7 @@ page (dashboard), presenters, programs, recordings, schedule, dj-settings, media
 - app icon / splash screen saved but not wired into manifest/PWA yet
 - some hardcoded colors may remain in complex files
 - Admin RBAC not implemented yet
-- Cloud not updated yet
+- [HISTORICAL] Cloud was not updated. VPS is the current production target.
 
 ### 3. Do NOT reopen unless regression:
 - SystemSettings foundation
@@ -783,3 +779,54 @@ This phase must audit/test:
 Important:
 Do NOT solve Cloud issues before mobile browser compatibility is understood.
 Cloud comes after mobile browser readiness.
+
+---
+
+## Handoff Note — 2026-05-28 (Mobile Studio Audit & Redesign)
+
+### Checkpoint: MOBILE-STUDIO-AUDIT-REDESIGN-COMPLETE
+
+### What Was Done
+- **8-bug mobile studio audit** — found and fixed all issues
+- **Schedule API migration** — `/api/mobile/schedule` now uses `resolveCurrentOrNextProgramSession()` instead of legacy `BroadcastSchedule`
+- **Stations API** — added `presenterMode` field
+- **Dashboard redesign** — 3 UX branches: SINGLE_STATION (auto-schedule), MULTI_STATION (dropdown), DIRECT_DJ (radio list)
+- **Queue/background cascade bug** — `stopFile()` fires `onFileComplete` asynchronously via RN bridge. Added `manualStopRef` guard with 100ms async release to all 4 `stopFile()` call sites
+- **VPS deployed** — API changes built and running
+- **Dina's iPhone** — app built and installed (device ID: `d4053ebbfc991467b8792b87c062d4e7a5f8e8c2`)
+
+### Critical Technical Knowledge
+1. **`manualStopRef` pattern** — MUST use `setTimeout(100ms)` for release, not synchronous. Native bridge events fire on next event loop tick.
+2. **Schedule resolution** — ALL schedule queries must go through `resolveCurrentOrNextProgramSession()`. Legacy `BroadcastSchedule` table is obsolete.
+3. **VirtualizedList** — NEVER use FlatList inside ScrollView. Use `.map()` for lists < 50 items.
+4. **Metro bundler** — must be running on port 8081 for dev builds. Phone + Mac must be on same WiFi.
+5. **iOS 16.7** — `xcrun devicectl` launch fails but app installs successfully. User must manually open app.
+
+### Current System State
+- **VPS**: API deployed, frontend built, PM2 running
+- **Mobile**: Latest build on Dina's iPhone
+- **Metro**: Running on localhost:8081
+
+### Open Issues (Priority Order)
+1. Audio token schedule validation (`/api/mobile/audio-token/route.ts`)
+2. Session-end watchdog (auto-disconnect)
+3. BG ↔ Queue crossfade timing
+4. Audio device selection
+5. Queue crossfade (Phase 4)
+6. SFX pads (Phase 5)
+7. DSP filters (Phase 6)
+8. Android build (Phase 7)
+
+### Backup
+`/Users/apple/Downloads/Akram_Developments/radio_streaming_project_BACKUP_2026-05-28_1909/` (12 GB)
+
+### Files Modified This Session
+| File | Change |
+|------|--------|
+| `frontend/src/app/api/mobile/schedule/route.ts` | Complete rewrite |
+| `frontend/src/app/api/mobile/stations/route.ts` | Added presenterMode |
+| `mobile-app/src/app/index.tsx` | Complete rewrite (3 branches) |
+| `mobile-app/src/app/studio/[stationId].tsx` | manualStopRef guard, NO_SCHEDULE block, default fix |
+| `mobile-app/src/components/studio/RecordingMiniPlayer.tsx` | FlatList → map() |
+| `mobile-app/src/components/studio/WaitScreen.tsx` | allowConnect default fix |
+

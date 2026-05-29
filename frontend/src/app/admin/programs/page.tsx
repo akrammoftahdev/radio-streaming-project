@@ -168,10 +168,7 @@ export default async function ProgramsPage({
           {hasScheduleParam && hasScheduleParam !== "all" && <input type="hidden" name="hasSchedule" value={hasScheduleParam} />}
           <label htmlFor="pageSize" className="text-xs font-medium text-neutral-400 mr-1">عدد النتائج:</label>
           <select id="pageSize" name="pageSize" defaultValue={finalPageSize}
-            className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-md px-2 py-1 outline-none transition-colors"
-            onFocus={e => { e.currentTarget.style.borderColor = "var(--eg-primary)"; }}
-            onBlur={e  => { e.currentTarget.style.borderColor = "var(--eg-border)"; }}
-            style={{ borderColor: "var(--eg-border)" }}>
+            className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-md px-2 py-1 outline-none transition-colors">
             {[20, 40, 60, 80, 100].map(n => <option key={n} value={n}>{n}</option>)}
           </select>
           <button type="submit" className="px-2 py-1 text-white text-xs font-medium rounded-md transition-colors mr-1 border"

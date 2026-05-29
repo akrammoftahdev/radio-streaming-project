@@ -4,6 +4,8 @@ import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import NoSleep from "nosleep.js";
+import DspPanel from "@/components/studio/DspPanel";
+import { type DspParams, DEFAULT_DSP_PARAMS } from "@/lib/dsp-presets";
 
 type Track    = { id: string; title: string; fileUrl?: string };
 type Category = { id: string; name: string; ownerType: string; tracks: Track[] };
@@ -89,6 +91,7 @@ type Props = {
   presenterBreakCategories: Category[];
   adminAdCategories:        Category[];
   presenterAdCategories:    Category[];
+  sfxCategories?:           Category[];  // SFX pads — admin-uploaded sound effects
   sessionEndMs?:            number;   // unix ms — if set, auto-disconnect when now ≥ sessionEndMs
   onExitStudio?:            () => void; // called after clean-disconnect to return to pre-flight
   directDjRadioId?:         string | null; // DIRECT_DJ only — required for token creation
@@ -259,6 +262,7 @@ export default function StudioPage({
   presenterBreakCategories,
   adminAdCategories,
   presenterAdCategories,
+  sfxCategories = [],
   sessionEndMs,
   onExitStudio,
   directDjRadioId,
@@ -311,6 +315,9 @@ export default function StudioPage({
   // Ducking ratio applied to background gain when mic is open.
   // 0.10 → fader 50% gives 5% background under mic; fader 100% gives 10%.
   const BG_DUCK_RATIO = 0.10;
+  // ── Queue-to-Queue Crossfade ────────────────────────────────────────────────
+  const QUEUE_CROSSFADE_SEC = 3;       // overlap duration in seconds
+  const QUEUE_CROSSFADE_CHECK_MS = 500; // polling interval to detect near-end
 
   const [queueVolume, setQueueVolume] = useState<number>(0.8);
   // Group 4.9 — Stable ref to latest mediaQueue for use inside audio callbacks
@@ -376,6 +383,62 @@ export default function StudioPage({
   // pendingRecordingReasonRef kept for backward safety — no longer drained (startSessionRecording
   // is called directly in ws.onopen; this ref is no longer written or read).
   const pendingRecordingReasonRef = useRef<'mic' | 'background' | 'queue' | null>(null);
+  // ── Queue-to-Queue Crossfade refs ──────────────────────────────────────────
+  // Timer that polls currentTime to detect when track is near end
+  const crossfadeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Guard: true while a crossfade overlap is in progress (prevents re-entrant triggers)
+  const inCrossfadeRef = useRef<boolean>(false);
+  // The "outgoing" player during crossfade — kept alive until fade completes
+  const outgoingPlayerRef = useRef<{
+    audio: HTMLAudioElement;
+    source: MediaElementAudioSourceNode;
+    gain: GainNode;
+  } | null>(null);
+  // ── SFX Pads ────────────────────────────────────────────────────────────────
+  // Pre-decoded AudioBuffers for instant playback (no network latency on trigger)
+  const sfxBuffersRef = useRef<Map<string, AudioBuffer>>(new Map());
+  // Active SFX sources so we can stop them on demand
+  const activeSfxRef  = useRef<Map<string, AudioBufferSourceNode>>(new Map());
+  // SFX gain node — routed to mixer for broadcast + monitor for local preview
+  const sfxGainRef    = useRef<GainNode | null>(null);
+  // SFX volume (0–1) — independent slider
+  const [sfxVolume, setSfxVolume]     = useState(0.8);
+  const sfxVolumeRef = useRef(0.8);
+  // SFX preload status for UI feedback
+  const [sfxPreloadStatus, setSfxPreloadStatus] = useState<'idle' | 'loading' | 'ready'>('idle');
+  // Open SFX category accordion
+  const [openSfxCategory, setOpenSfxCategory] = useState<string | null>(null);
+  // ── DSP Mic Filters ─────────────────────────────────────────────────────────
+  const [dspParams, setDspParams]     = useState<DspParams>(DEFAULT_DSP_PARAMS);
+  const [dspBypassed, setDspBypassed] = useState(false);
+  const dspParamsRef   = useRef<DspParams>(DEFAULT_DSP_PARAMS);
+  // Node refs for the 13-node processing chain
+  const dspHpRef       = useRef<BiquadFilterNode | null>(null);        // High-pass filter
+  const dspLpRef       = useRef<BiquadFilterNode | null>(null);        // Low-pass filter
+  const dspEqLowRef    = useRef<BiquadFilterNode | null>(null);        // EQ — low shelf
+  const dspEqMidRef    = useRef<BiquadFilterNode | null>(null);        // EQ — mid peaking
+  const dspEqHighRef   = useRef<BiquadFilterNode | null>(null);        // EQ — high shelf
+  const dspCompRef     = useRef<DynamicsCompressorNode | null>(null);  // Compressor
+  const dspLimiterRef  = useRef<DynamicsCompressorNode | null>(null);  // Limiter (comp w/ high ratio)
+  const dspGateGainRef = useRef<GainNode | null>(null);                // Noise gate (controlled via analyser)
+  const dspGateAnalyserRef = useRef<AnalyserNode | null>(null);        // Gate analyser
+  const dspGateRafRef  = useRef<number | null>(null);                  // Gate RAF loop
+  const dspDeEsserBpRef = useRef<BiquadFilterNode | null>(null);       // De-esser bandpass
+  const dspDeEsserGainRef = useRef<GainNode | null>(null);             // De-esser sidechain gain
+  const dspReverbConvRef = useRef<ConvolverNode | null>(null);         // Reverb convolver
+  const dspReverbWetRef  = useRef<GainNode | null>(null);              // Reverb wet mix
+  const dspReverbDryRef  = useRef<GainNode | null>(null);              // Reverb dry mix
+  const dspDelayRef     = useRef<DelayNode | null>(null);              // Delay node
+  const dspDelayFbRef   = useRef<GainNode | null>(null);               // Delay feedback
+  const dspDelayWetRef  = useRef<GainNode | null>(null);               // Delay wet mix
+  const dspDelayDryRef  = useRef<GainNode | null>(null);               // Delay dry mix
+  const dspWarmthRef    = useRef<WaveShaperNode | null>(null);         // Tape warmth
+  const dspWarmthWetRef = useRef<GainNode | null>(null);               // Warmth wet
+  const dspWarmthDryRef = useRef<GainNode | null>(null);               // Warmth dry
+  // DSP chain output — connects to micGainRef
+  const dspOutputRef    = useRef<GainNode | null>(null);               // Final DSP output
+  // DSP bypass splitter — mic source goes to either DSP chain or direct to micGain
+  const dspBypassRef    = useRef<boolean>(false);
 
   const stopBackgroundAudio = useCallback(() => {
     // Disconnect mixer nodes before releasing the element
@@ -413,6 +476,15 @@ export default function StudioPage({
     if (noSleepRef.current) noSleepRef.current.disable();
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+    // ── Crossfade cleanup ──────────────────────────────────────────────────────
+    if (crossfadeTimerRef.current) { clearInterval(crossfadeTimerRef.current); crossfadeTimerRef.current = null; }
+    inCrossfadeRef.current = false;
+    if (outgoingPlayerRef.current) {
+      try { outgoingPlayerRef.current.audio.pause(); } catch {/* ignore */}
+      try { outgoingPlayerRef.current.gain.disconnect(); } catch {/* ignore */}
+      try { outgoingPlayerRef.current.source.disconnect(); } catch {/* ignore */}
+      outgoingPlayerRef.current = null;
+    }
     // Stop the silent keepalive node first
     try { keepaliveRef.current?.stop(); } catch {/* ignore */}
     try { keepaliveRef.current?.disconnect(); } catch {/* ignore */}
@@ -424,6 +496,17 @@ export default function StudioPage({
     try { bgSourceRef.current?.disconnect(); } catch {/* ignore */}
     try { queueGainRef.current?.disconnect(); } catch {/* ignore */}
     try { queueSourceRef.current?.disconnect(); } catch {/* ignore */}
+    // ── SFX cleanup ───────────────────────────────────────────────────────────
+    activeSfxRef.current.forEach(s => { try { s.stop(); } catch {/* */} });
+    activeSfxRef.current.clear();
+    try { sfxGainRef.current?.disconnect(); } catch {/* ignore */}
+    sfxGainRef.current = null;
+    sfxBuffersRef.current.clear();
+    setSfxPreloadStatus('idle');
+    // ── DSP cleanup ───────────────────────────────────────────────────────────
+    cleanupDsp();
+    setDspBypassed(false);
+    setDspParams(DEFAULT_DSP_PARAMS);
     // Reset monitoring gain to 0 before disconnecting
     if (monitorGainRef.current) { monitorGainRef.current.gain.value = 0; }
     try { monitorGainRef.current?.disconnect(); } catch {/* ignore */}
@@ -1021,17 +1104,20 @@ export default function StudioPage({
       setPlayingQueueId(null);
       return;
     }
+    // ── onended: safety-net for hard cut (crossfade didn't fire) ─────────────
     audio.onended = () => {
       if (playbackRafRef.current) { cancelAnimationFrame(playbackRafRef.current); playbackRafRef.current = null; }
-      // Group 4.9 — Auto-advance: find the next READY item after the finished one.
+      if (crossfadeTimerRef.current) { clearInterval(crossfadeTimerRef.current); crossfadeTimerRef.current = null; }
+      // If crossfade already handled the transition, skip
+      if (inCrossfadeRef.current) return;
+      // Auto-advance with hard cut (short tracks or autoQueue already handled)
       if (autoQueueRef.current) {
         const queue = mediaQueueRef.current;
         const currentIdx = queue.findIndex(q => q.id === item.id);
         if (currentIdx !== -1) {
           const nextItem = queue.slice(currentIdx + 1).find(q => q.status === "READY");
           if (nextItem) {
-            console.log('[Crossfade] queue→queue — auto-advancing to next item');
-            // Disconnect current nodes — playQueueItem will create new ones
+            console.log('[Crossfade] queue→queue — hard-cut auto-advance (short track or no crossfade)');
             try { queueGainRef.current?.disconnect(); } catch {/* ignore */}
             try { queueSourceRef.current?.disconnect(); } catch {/* ignore */}
             queueGainRef.current   = null;
@@ -1041,7 +1127,7 @@ export default function StudioPage({
             setPlaybackProgress(null);
             setIsPaused(false);
             setTimeout(() => playQueueItem(nextItem), 50);
-            return; // skip bg restore — next item will handle it
+            return;
           }
         }
       }
@@ -1054,17 +1140,17 @@ export default function StudioPage({
       setPlayingQueueId(null);
       setPlaybackProgress(null);
       setIsPaused(false);
-      // Fade background back in over 2 seconds
       if (bgGainRef.current) {
         const isMicLive = micGainRef.current !== null && micGainRef.current.gain.value > 0;
         const targetVol = isMicLive ? bgVolumeRef.current * BG_DUCK_RATIO : bgVolumeRef.current;
         fadeGain(bgGainRef.current, targetVol, 2, 'queue→bg fade-in');
       } else {
-        applyBgGain('queue-ended-no-next'); // fallback
+        applyBgGain('queue-ended-no-next');
       }
     };
     audio.onerror = () => {
       console.error(`[playback] Failed to load audio for queue item ${item.id}`);
+      if (crossfadeTimerRef.current) { clearInterval(crossfadeTimerRef.current); crossfadeTimerRef.current = null; }
       try { queueGainRef.current?.disconnect(); } catch {/* ignore */}
       try { queueSourceRef.current?.disconnect(); } catch {/* ignore */}
       queueGainRef.current   = null;
@@ -1075,7 +1161,6 @@ export default function StudioPage({
     audio.play()
         .then(() => {
         console.log('[DIAG][queue] audio.play(): RESOLVED — starting crossfade in');
-        // ✔ Real audio source connected — start recording if not already started
         ensureRecordingStarted('queue');
         // Fade queue gain up over 3 seconds now that audio is actually playing
         if (queueGainRef.current) {
@@ -1088,6 +1173,171 @@ export default function StudioPage({
           playbackRafRef.current = requestAnimationFrame(tick);
         };
         playbackRafRef.current = requestAnimationFrame(tick);
+
+        // ── Queue-to-Queue Crossfade polling ────────────────────────────────────
+        // Every QUEUE_CROSSFADE_CHECK_MS, check if track is within QUEUE_CROSSFADE_SEC of ending.
+        // If so, find next READY item and start a smooth overlapping crossfade.
+        if (crossfadeTimerRef.current) { clearInterval(crossfadeTimerRef.current); }
+        crossfadeTimerRef.current = setInterval(() => {
+          const a = currentlyPlayingRef.current;
+          if (!a || !a.duration || a.paused || inCrossfadeRef.current) return;
+          const remaining = a.duration - a.currentTime;
+          // Only crossfade tracks longer than 2× crossfade duration (avoid crossfading very short clips)
+          if (remaining <= QUEUE_CROSSFADE_SEC && a.duration > QUEUE_CROSSFADE_SEC * 2 && autoQueueRef.current) {
+            const queue = mediaQueueRef.current;
+            const currentIdx = queue.findIndex(q => q.id === item.id);
+            if (currentIdx === -1) return;
+            const nextItem = queue.slice(currentIdx + 1).find(q => q.status === "READY");
+            if (nextItem) {
+              clearInterval(crossfadeTimerRef.current!);
+              crossfadeTimerRef.current = null;
+              // ── START CROSSFADE ──────────────────────────────────────────────────
+              inCrossfadeRef.current = true;
+              console.log(`[Crossfade] Starting ${QUEUE_CROSSFADE_SEC}s overlap: "${item.title}" → "${nextItem.title}"`);
+
+              // 1. Fade out current (track A)
+              if (queueGainRef.current) {
+                fadeGain(queueGainRef.current, 0, QUEUE_CROSSFADE_SEC, 'crossfade: A fade-out');
+              }
+
+              // 2. Store outgoing player refs so we can clean up after fade
+              outgoingPlayerRef.current = {
+                audio: a,
+                source: queueSourceRef.current!,
+                gain: queueGainRef.current!,
+              };
+
+              // 3. Create incoming player (track B)
+              const nextSrc = getQueueItemAudioSrc(nextItem);
+              const nextAudio = new Audio(nextSrc);
+              const ctxB = audioCtxRef.current!;
+              const destB = mixerDestRef.current!;
+              let nextSource: MediaElementAudioSourceNode;
+              try {
+                nextSource = ctxB.createMediaElementSource(nextAudio);
+              } catch (e) {
+                console.error('[Crossfade] createMediaElementSource for B FAILED:', e);
+                inCrossfadeRef.current = false;
+                return;
+              }
+              const nextGain = ctxB.createGain();
+              nextGain.gain.value = 0; // start silent
+              nextSource.connect(nextGain);
+              nextGain.connect(destB);
+              if (monitorGainRef.current) nextGain.connect(monitorGainRef.current);
+
+              // 4. Swap refs to the new player
+              queueSourceRef.current = nextSource;
+              queueGainRef.current   = nextGain;
+              currentlyPlayingRef.current = nextAudio;
+              setPlayingQueueId(nextItem.id);
+              setIsPaused(false);
+
+              // 5. Play B and fade in
+              nextAudio.play()
+                .then(() => {
+                  console.log('[Crossfade] Track B playing — fading in');
+                  fadeGain(nextGain, queueVolume, QUEUE_CROSSFADE_SEC, 'crossfade: B fade-in');
+                  // Restart RAF for new track
+                  if (playbackRafRef.current) cancelAnimationFrame(playbackRafRef.current);
+                  const tickB = () => {
+                    if (!currentlyPlayingRef.current) return;
+                    setPlaybackProgress({ id: nextItem.id, currentTime: currentlyPlayingRef.current.currentTime, duration: currentlyPlayingRef.current.duration || 0 });
+                    playbackRafRef.current = requestAnimationFrame(tickB);
+                  };
+                  playbackRafRef.current = requestAnimationFrame(tickB);
+                })
+                .catch(err => {
+                  console.error('[Crossfade] Track B play REJECTED:', err);
+                  inCrossfadeRef.current = false;
+                });
+
+              // 6. Set onended for track B (recursive — enables chain crossfading)
+              nextAudio.onended = audio.onended; // reuse same handler pattern
+              // Override with fresh item reference for the next onended
+              nextAudio.onended = () => {
+                if (playbackRafRef.current) { cancelAnimationFrame(playbackRafRef.current); playbackRafRef.current = null; }
+                if (crossfadeTimerRef.current) { clearInterval(crossfadeTimerRef.current); crossfadeTimerRef.current = null; }
+                if (inCrossfadeRef.current) return;
+                // Same logic as original onended but for nextItem
+                if (autoQueueRef.current) {
+                  const q = mediaQueueRef.current;
+                  const idx = q.findIndex(qi => qi.id === nextItem.id);
+                  if (idx !== -1) {
+                    const after = q.slice(idx + 1).find(qi => qi.status === "READY");
+                    if (after) {
+                      try { queueGainRef.current?.disconnect(); } catch {/* ignore */}
+                      try { queueSourceRef.current?.disconnect(); } catch {/* ignore */}
+                      queueGainRef.current = null; queueSourceRef.current = null;
+                      currentlyPlayingRef.current = null;
+                      setPlayingQueueId(null); setPlaybackProgress(null); setIsPaused(false);
+                      setTimeout(() => playQueueItem(after), 50);
+                      return;
+                    }
+                  }
+                }
+                try { queueGainRef.current?.disconnect(); } catch {/* ignore */}
+                try { queueSourceRef.current?.disconnect(); } catch {/* ignore */}
+                queueGainRef.current = null; queueSourceRef.current = null;
+                currentlyPlayingRef.current = null;
+                setPlayingQueueId(null); setPlaybackProgress(null); setIsPaused(false);
+                if (bgGainRef.current) {
+                  const isMicLive = micGainRef.current !== null && micGainRef.current.gain.value > 0;
+                  const tv = isMicLive ? bgVolumeRef.current * BG_DUCK_RATIO : bgVolumeRef.current;
+                  fadeGain(bgGainRef.current, tv, 2, 'queue→bg fade-in (after crossfade chain)');
+                } else { applyBgGain('queue-ended-crossfade-chain'); }
+              };
+
+              // 7. Clean up outgoing player after fade duration
+              setTimeout(() => {
+                if (outgoingPlayerRef.current) {
+                  try { outgoingPlayerRef.current.audio.pause(); } catch {/* ignore */}
+                  try { outgoingPlayerRef.current.gain.disconnect(); } catch {/* ignore */}
+                  try { outgoingPlayerRef.current.source.disconnect(); } catch {/* ignore */}
+                  outgoingPlayerRef.current = null;
+                  console.log('[Crossfade] Outgoing player cleaned up');
+                }
+                inCrossfadeRef.current = false;
+
+                // Re-start crossfade polling for the new track
+                if (crossfadeTimerRef.current) clearInterval(crossfadeTimerRef.current);
+                crossfadeTimerRef.current = setInterval(() => {
+                  const b = currentlyPlayingRef.current;
+                  if (!b || !b.duration || b.paused || inCrossfadeRef.current) return;
+                  const rem = b.duration - b.currentTime;
+                  if (rem <= QUEUE_CROSSFADE_SEC && b.duration > QUEUE_CROSSFADE_SEC * 2 && autoQueueRef.current) {
+                    const q2 = mediaQueueRef.current;
+                    const idx2 = q2.findIndex(qi => qi.id === nextItem.id);
+                    if (idx2 === -1) return;
+                    const after2 = q2.slice(idx2 + 1).find(qi => qi.status === "READY");
+                    if (after2) {
+                      clearInterval(crossfadeTimerRef.current!);
+                      crossfadeTimerRef.current = null;
+                      // Trigger playQueueItem which will itself set up crossfade polling
+                      // But first, we need to stop the current playback cleanly
+                      inCrossfadeRef.current = true;
+                      console.log(`[Crossfade] Chain: starting overlap for "${nextItem.title}" → "${after2.title}"`);
+                      if (queueGainRef.current) fadeGain(queueGainRef.current, 0, QUEUE_CROSSFADE_SEC, 'crossfade-chain: fade-out');
+                      outgoingPlayerRef.current = { audio: currentlyPlayingRef.current!, source: queueSourceRef.current!, gain: queueGainRef.current! };
+                      currentlyPlayingRef.current = null; queueSourceRef.current = null; queueGainRef.current = null;
+                      setPlayingQueueId(null); setPlaybackProgress(null); setIsPaused(false);
+                      setTimeout(() => { playQueueItem(after2); }, 50);
+                      setTimeout(() => {
+                        if (outgoingPlayerRef.current) {
+                          try { outgoingPlayerRef.current.audio.pause(); } catch {/* */}
+                          try { outgoingPlayerRef.current.gain.disconnect(); } catch {/* */}
+                          try { outgoingPlayerRef.current.source.disconnect(); } catch {/* */}
+                          outgoingPlayerRef.current = null;
+                        }
+                        inCrossfadeRef.current = false;
+                      }, QUEUE_CROSSFADE_SEC * 1000 + 100);
+                    }
+                  }
+                }, QUEUE_CROSSFADE_CHECK_MS);
+              }, QUEUE_CROSSFADE_SEC * 1000 + 100);
+            }
+          }
+        }, QUEUE_CROSSFADE_CHECK_MS) as unknown as ReturnType<typeof setInterval>;
       })
       .catch(err => {
         console.error('[DIAG][queue] audio.play() REJECTED:', err);
@@ -1112,6 +1362,15 @@ export default function StudioPage({
   const stopQueuePlayback = useCallback(() => {
     // Cancel RAF loop
     if (playbackRafRef.current) { cancelAnimationFrame(playbackRafRef.current); playbackRafRef.current = null; }
+    // ── Crossfade cleanup ──────────────────────────────────────────────────────
+    if (crossfadeTimerRef.current) { clearInterval(crossfadeTimerRef.current); crossfadeTimerRef.current = null; }
+    inCrossfadeRef.current = false;
+    if (outgoingPlayerRef.current) {
+      try { outgoingPlayerRef.current.audio.pause(); } catch {/* ignore */}
+      try { outgoingPlayerRef.current.gain.disconnect(); } catch {/* ignore */}
+      try { outgoingPlayerRef.current.source.disconnect(); } catch {/* ignore */}
+      outgoingPlayerRef.current = null;
+    }
     // Fade queue out before disconnecting (instant — stop is a deliberate manual action)
     try { queueGainRef.current?.disconnect(); } catch {/* ignore */}
     try { queueSourceRef.current?.disconnect(); } catch {/* ignore */}
@@ -1139,6 +1398,370 @@ export default function StudioPage({
     setIsPaused(false);
   }, [applyBgGain, fadeGain]);
 
+  // ── SFX Pad Functions ────────────────────────────────────────────────────────
+  // Keep sfxVolumeRef in sync with state so callbacks don't go stale
+  useEffect(() => { sfxVolumeRef.current = sfxVolume; }, [sfxVolume]);
+  // Apply volume changes to gain node live
+  useEffect(() => {
+    if (sfxGainRef.current) sfxGainRef.current.gain.value = sfxVolume;
+  }, [sfxVolume]);
+
+  // Preload all SFX tracks into AudioBuffers for zero-latency playback
+  const preloadSfxBuffers = useCallback(async () => {
+    const ctx = audioCtxRef.current;
+    if (!ctx || sfxCategories.length === 0) return;
+    setSfxPreloadStatus('loading');
+
+    // Create SFX gain node if not yet created
+    if (!sfxGainRef.current) {
+      const g = ctx.createGain();
+      g.gain.value = sfxVolumeRef.current;
+      if (mixerDestRef.current) g.connect(mixerDestRef.current);
+      if (monitorGainRef.current) g.connect(monitorGainRef.current);
+      sfxGainRef.current = g;
+    }
+
+    const allTracks = sfxCategories.flatMap(c => c.tracks);
+    let loaded = 0;
+    for (const track of allTracks) {
+      if (sfxBuffersRef.current.has(track.id)) { loaded++; continue; }
+      try {
+        const url = track.fileUrl?.startsWith('http') ? track.fileUrl : `/stream/${(track.fileUrl || '').replace(/^\//, '')}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const arrayBuf = await res.arrayBuffer();
+        const audioBuf = await ctx.decodeAudioData(arrayBuf);
+        sfxBuffersRef.current.set(track.id, audioBuf);
+        loaded++;
+      } catch (err) {
+        console.warn(`[SFX] Failed to preload "${track.title}":`, err);
+      }
+    }
+    console.log(`[SFX] Preloaded ${loaded}/${allTracks.length} effects`);
+    setSfxPreloadStatus('ready');
+  }, [sfxCategories]);
+
+  // Preload SFX when AudioContext is available (after first connect)
+  useEffect(() => {
+    if (audioCtxRef.current && sfxCategories.length > 0 && sfxPreloadStatus === 'idle') {
+      preloadSfxBuffers();
+    }
+  }, [isConnected, sfxCategories, sfxPreloadStatus, preloadSfxBuffers]);
+
+  // Play an SFX pad — one-shot AudioBufferSourceNode for instant triggering
+  const playSfx = useCallback((trackId: string) => {
+    const ctx = audioCtxRef.current;
+    const buffer = sfxBuffersRef.current.get(trackId);
+    if (!ctx || !buffer) {
+      console.warn(`[SFX] Cannot play — ${!ctx ? 'no AudioContext' : 'buffer not loaded'}`);
+      return;
+    }
+    // Stop existing instance of same SFX if still playing (re-trigger)
+    const existing = activeSfxRef.current.get(trackId);
+    if (existing) { try { existing.stop(); } catch {/* already stopped */} }
+
+    // Ensure SFX gain node exists
+    if (!sfxGainRef.current) {
+      const g = ctx.createGain();
+      g.gain.value = sfxVolumeRef.current;
+      if (mixerDestRef.current) g.connect(mixerDestRef.current);
+      if (monitorGainRef.current) g.connect(monitorGainRef.current);
+      sfxGainRef.current = g;
+    }
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(sfxGainRef.current);
+    source.onended = () => { activeSfxRef.current.delete(trackId); };
+    activeSfxRef.current.set(trackId, source);
+    source.start(0);
+    console.log(`[SFX] Playing: ${trackId}`);
+    // Ensure recording captures SFX
+    ensureRecordingStarted('queue');
+  }, []);
+
+  // Stop an individual SFX pad
+  const stopSfx = useCallback((trackId: string) => {
+    const source = activeSfxRef.current.get(trackId);
+    if (source) {
+      try { source.stop(); } catch {/* already stopped */}
+      activeSfxRef.current.delete(trackId);
+    }
+  }, []);
+
+  // Stop ALL active SFX
+  const stopAllSfx = useCallback(() => {
+    activeSfxRef.current.forEach((source) => {
+      try { source.stop(); } catch {/* ignore */}
+    });
+    activeSfxRef.current.clear();
+  }, []);
+
+
+  // ── DSP Filter Chain Functions ──────────────────────────────────────────────
+
+  // Keep dspParamsRef in sync with state
+  useEffect(() => { dspParamsRef.current = dspParams; }, [dspParams]);
+  // Keep dspBypassRef in sync with state
+  useEffect(() => { dspBypassRef.current = dspBypassed; }, [dspBypassed]);
+
+  // Generate impulse response for reverb
+  const generateImpulseResponse = useCallback((ctx: AudioContext, decay: number, duration = 2): AudioBuffer => {
+    const sampleRate = ctx.sampleRate;
+    const length = sampleRate * duration;
+    const impulse = ctx.createBuffer(2, length, sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = impulse.getChannelData(ch);
+      for (let i = 0; i < length; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay);
+      }
+    }
+    return impulse;
+  }, []);
+
+  // Generate waveshaper curve for tape warmth
+  const makeWarmthCurve = useCallback((amount: number): Float32Array<ArrayBuffer> => {
+    const samples = 44100;
+    const curve = new Float32Array(samples) as Float32Array<ArrayBuffer>;
+    const k = amount * 50;
+    for (let i = 0; i < samples; i++) {
+      const x = (i * 2) / samples - 1;
+      curve[i] = ((1 + k) * x) / (1 + k * Math.abs(x));
+    }
+    return curve;
+  }, []);
+
+  // Noise gate RAF loop — monitors signal level and gates the gain
+  const startNoiseGateLoop = useCallback(() => {
+    if (dspGateRafRef.current) cancelAnimationFrame(dspGateRafRef.current);
+    const analyser = dspGateAnalyserRef.current;
+    const gateGain = dspGateGainRef.current;
+    if (!analyser || !gateGain) return;
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    let gateOpen = true;
+
+    const loop = () => {
+      dspGateRafRef.current = requestAnimationFrame(loop);
+      const params = dspParamsRef.current;
+      analyser.getByteFrequencyData(dataArray);
+      let sum = 0;
+      for (let i = 0; i < dataArray.length; i++) sum += dataArray[i] * dataArray[i];
+      const rms = Math.sqrt(sum / dataArray.length);
+      const dbLevel = 20 * Math.log10(rms / 255 + 1e-10);
+
+      if (dbLevel > params.gateThreshold) {
+        if (!gateOpen) {
+          gateGain.gain.linearRampToValueAtTime(1, (audioCtxRef.current?.currentTime ?? 0) + params.gateAttack);
+          gateOpen = true;
+        }
+      } else {
+        if (gateOpen) {
+          gateGain.gain.linearRampToValueAtTime(0, (audioCtxRef.current?.currentTime ?? 0) + params.gateRelease);
+          gateOpen = false;
+        }
+      }
+    };
+    loop();
+  }, []);
+
+  // Build the full DSP chain: mic → HP → LP → EQ(3) → Comp → Gate → DeEsser → Reverb → Delay → Warmth → Limiter → output
+  const buildDspChain = useCallback((ctx: AudioContext, inputNode: MediaStreamAudioSourceNode): GainNode => {
+    const p = dspParamsRef.current;
+
+    // 1. High-Pass
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass'; hp.frequency.value = p.hpFreq; hp.Q.value = 0.707;
+    dspHpRef.current = hp;
+
+    // 2. Low-Pass
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = p.lpFreq; lp.Q.value = 0.707;
+    dspLpRef.current = lp;
+
+    // 3-5. EQ
+    const eqLow = ctx.createBiquadFilter();
+    eqLow.type = 'lowshelf'; eqLow.frequency.value = p.eqLowFreq; eqLow.gain.value = p.eqLowGain;
+    dspEqLowRef.current = eqLow;
+
+    const eqMid = ctx.createBiquadFilter();
+    eqMid.type = 'peaking'; eqMid.frequency.value = p.eqMidFreq; eqMid.gain.value = p.eqMidGain; eqMid.Q.value = 1.5;
+    dspEqMidRef.current = eqMid;
+
+    const eqHigh = ctx.createBiquadFilter();
+    eqHigh.type = 'highshelf'; eqHigh.frequency.value = p.eqHighFreq; eqHigh.gain.value = p.eqHighGain;
+    dspEqHighRef.current = eqHigh;
+
+    // 6. Compressor
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = p.compThreshold; comp.ratio.value = p.compRatio;
+    comp.attack.value = p.compAttack; comp.release.value = p.compRelease; comp.knee.value = p.compKnee;
+    dspCompRef.current = comp;
+
+    // 7. Noise Gate
+    const gateAnalyser = ctx.createAnalyser(); gateAnalyser.fftSize = 256;
+    const gateGain = ctx.createGain(); gateGain.gain.value = 1;
+    dspGateAnalyserRef.current = gateAnalyser;
+    dspGateGainRef.current = gateGain;
+
+    // 8. De-Esser
+    const deEsserBp = ctx.createBiquadFilter();
+    deEsserBp.type = 'bandpass'; deEsserBp.frequency.value = p.deEsserFreq; deEsserBp.Q.value = p.deEsserQ;
+    const deEsserGain = ctx.createGain(); deEsserGain.gain.value = 1;
+    dspDeEsserBpRef.current = deEsserBp; dspDeEsserGainRef.current = deEsserGain;
+
+    // 9. Reverb
+    const reverbConv = ctx.createConvolver();
+    reverbConv.buffer = generateImpulseResponse(ctx, p.reverbDecay);
+    const reverbWet = ctx.createGain(); reverbWet.gain.value = p.reverbWet;
+    const reverbDry = ctx.createGain(); reverbDry.gain.value = 1 - p.reverbWet;
+    dspReverbConvRef.current = reverbConv; dspReverbWetRef.current = reverbWet; dspReverbDryRef.current = reverbDry;
+
+    // 10. Delay
+    const delay = ctx.createDelay(2); delay.delayTime.value = p.delayTime;
+    const delayFb = ctx.createGain(); delayFb.gain.value = p.delayFeedback;
+    const delayWet = ctx.createGain(); delayWet.gain.value = p.delayWet;
+    const delayDry = ctx.createGain(); delayDry.gain.value = 1 - p.delayWet;
+    dspDelayRef.current = delay; dspDelayFbRef.current = delayFb;
+    dspDelayWetRef.current = delayWet; dspDelayDryRef.current = delayDry;
+
+    // 11. Tape Warmth
+    const warmth = ctx.createWaveShaper();
+    warmth.curve = makeWarmthCurve(p.warmthAmount); warmth.oversample = '2x';
+    const warmthWet = ctx.createGain(); warmthWet.gain.value = p.warmthAmount;
+    const warmthDry = ctx.createGain(); warmthDry.gain.value = 1 - p.warmthAmount;
+    dspWarmthRef.current = warmth; dspWarmthWetRef.current = warmthWet; dspWarmthDryRef.current = warmthDry;
+
+    // 12. Limiter
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = p.limiterThreshold; limiter.ratio.value = 20;
+    limiter.attack.value = 0.001; limiter.release.value = 0.05; limiter.knee.value = 0;
+    dspLimiterRef.current = limiter;
+
+    // 13. Output
+    const output = ctx.createGain(); output.gain.value = 1;
+    dspOutputRef.current = output;
+
+    // ── Wire the chain ────────────────────────────────────────────────────────
+    inputNode.connect(hp);
+    hp.connect(lp); lp.connect(eqLow); eqLow.connect(eqMid); eqMid.connect(eqHigh);
+    eqHigh.connect(comp); comp.connect(gateAnalyser); comp.connect(gateGain);
+    gateGain.connect(deEsserBp); gateGain.connect(deEsserGain);
+
+    // Reverb split
+    const reverbMerge = ctx.createGain();
+    deEsserGain.connect(reverbDry); deEsserGain.connect(reverbConv);
+    reverbConv.connect(reverbWet); reverbDry.connect(reverbMerge); reverbWet.connect(reverbMerge);
+
+    // Delay split
+    const delayMerge = ctx.createGain();
+    reverbMerge.connect(delayDry); reverbMerge.connect(delay);
+    delay.connect(delayFb); delayFb.connect(delay); delay.connect(delayWet);
+    delayDry.connect(delayMerge); delayWet.connect(delayMerge);
+
+    // Warmth split
+    const warmthMerge = ctx.createGain();
+    delayMerge.connect(warmthDry); delayMerge.connect(warmth);
+    warmth.connect(warmthWet); warmthDry.connect(warmthMerge); warmthWet.connect(warmthMerge);
+
+    // Final
+    warmthMerge.connect(limiter); limiter.connect(output);
+
+    startNoiseGateLoop();
+    return output;
+  }, [generateImpulseResponse, makeWarmthCurve, startNoiseGateLoop]);
+
+  // Apply DSP parameter changes to existing nodes in real-time
+  const applyDspParams = useCallback((params: DspParams) => {
+    setDspParams(params);
+    const t = audioCtxRef.current?.currentTime ?? 0;
+
+    // ── Filters (HP + LP) ─────────────────────────────────────────────────
+    const filterOn = params.filterEnabled !== false;
+    if (dspHpRef.current) dspHpRef.current.frequency.setValueAtTime(filterOn ? params.hpFreq : 20, t);
+    if (dspLpRef.current) dspLpRef.current.frequency.setValueAtTime(filterOn ? params.lpFreq : 22000, t);
+
+    // ── EQ ─────────────────────────────────────────────────────────────────
+    const eqOn = params.eqEnabled !== false;
+    if (dspEqLowRef.current) { dspEqLowRef.current.frequency.setValueAtTime(params.eqLowFreq, t); dspEqLowRef.current.gain.setValueAtTime(eqOn ? params.eqLowGain : 0, t); }
+    if (dspEqMidRef.current) { dspEqMidRef.current.frequency.setValueAtTime(params.eqMidFreq, t); dspEqMidRef.current.gain.setValueAtTime(eqOn ? params.eqMidGain : 0, t); }
+    if (dspEqHighRef.current) { dspEqHighRef.current.frequency.setValueAtTime(params.eqHighFreq, t); dspEqHighRef.current.gain.setValueAtTime(eqOn ? params.eqHighGain : 0, t); }
+
+    // ── Dynamics (Compressor + Limiter) ────────────────────────────────────
+    const dynOn = params.dynamicsEnabled !== false;
+    if (dspCompRef.current) {
+      dspCompRef.current.threshold.setValueAtTime(dynOn ? params.compThreshold : 0, t);
+      dspCompRef.current.ratio.setValueAtTime(dynOn ? params.compRatio : 1, t);
+      dspCompRef.current.attack.setValueAtTime(dynOn ? params.compAttack : 0.003, t);
+      dspCompRef.current.release.setValueAtTime(dynOn ? params.compRelease : 0.25, t);
+      dspCompRef.current.knee.setValueAtTime(dynOn ? params.compKnee : 0, t);
+    }
+    if (dspLimiterRef.current) dspLimiterRef.current.threshold.setValueAtTime(dynOn ? params.limiterThreshold : 0, t);
+
+    // ── De-Esser ──────────────────────────────────────────────────────────
+    const deesserOn = params.deesserEnabled !== false;
+    if (dspDeEsserBpRef.current) { dspDeEsserBpRef.current.frequency.setValueAtTime(params.deEsserFreq, t); dspDeEsserBpRef.current.Q.setValueAtTime(deesserOn ? params.deEsserQ : 0.001, t); }
+
+    // ── Reverb ────────────────────────────────────────────────────────────
+    const reverbOn = params.reverbEnabled !== false;
+    const revWet = reverbOn ? params.reverbWet : 0;
+    if (dspReverbWetRef.current) dspReverbWetRef.current.gain.setValueAtTime(revWet, t);
+    if (dspReverbDryRef.current) dspReverbDryRef.current.gain.setValueAtTime(1 - revWet, t);
+    if (dspReverbConvRef.current && audioCtxRef.current) {
+      try { dspReverbConvRef.current.buffer = generateImpulseResponse(audioCtxRef.current, params.reverbDecay); } catch {/* */}
+    }
+
+    // ── Delay ─────────────────────────────────────────────────────────────
+    const delayOn = params.delayEnabled !== false;
+    const dlyWet = delayOn ? params.delayWet : 0;
+    if (dspDelayRef.current) dspDelayRef.current.delayTime.setValueAtTime(delayOn ? params.delayTime : 0, t);
+    if (dspDelayFbRef.current) dspDelayFbRef.current.gain.setValueAtTime(delayOn ? params.delayFeedback : 0, t);
+    if (dspDelayWetRef.current) dspDelayWetRef.current.gain.setValueAtTime(dlyWet, t);
+    if (dspDelayDryRef.current) dspDelayDryRef.current.gain.setValueAtTime(1 - dlyWet, t);
+
+    // ── Warmth ────────────────────────────────────────────────────────────
+    const warmthOn = params.warmthEnabled !== false;
+    const warmAmt = warmthOn ? params.warmthAmount : 0;
+    if (dspWarmthRef.current) dspWarmthRef.current.curve = makeWarmthCurve(warmAmt);
+    if (dspWarmthWetRef.current) dspWarmthWetRef.current.gain.setValueAtTime(warmAmt, t);
+    if (dspWarmthDryRef.current) dspWarmthDryRef.current.gain.setValueAtTime(1 - warmAmt, t);
+  }, [generateImpulseResponse, makeWarmthCurve]);
+
+  // Toggle DSP bypass
+  const toggleDspBypass = useCallback(() => {
+    setDspBypassed(prev => {
+      const newBypassed = !prev;
+      const ctx = audioCtxRef.current;
+      const micSrc = micSourceRef.current;
+      const micGain = micGainRef.current;
+      const dspOut = dspOutputRef.current;
+      if (!ctx || !micSrc || !micGain) return newBypassed;
+      try { micSrc.disconnect(); } catch {/* */}
+      if (newBypassed) {
+        micSrc.connect(micGain);
+        if (analyserRef.current) micSrc.connect(analyserRef.current);
+      } else {
+        if (dspHpRef.current) {
+          micSrc.connect(dspHpRef.current);
+          if (analyserRef.current && dspOut) dspOut.connect(analyserRef.current);
+        } else { micSrc.connect(micGain); }
+      }
+      return newBypassed;
+    });
+  }, []);
+
+  // DSP cleanup
+  const cleanupDsp = useCallback(() => {
+    if (dspGateRafRef.current) { cancelAnimationFrame(dspGateRafRef.current); dspGateRafRef.current = null; }
+    const refs = [dspHpRef, dspLpRef, dspEqLowRef, dspEqMidRef, dspEqHighRef, dspCompRef, dspLimiterRef,
+      dspGateGainRef, dspGateAnalyserRef, dspDeEsserBpRef, dspDeEsserGainRef,
+      dspReverbConvRef, dspReverbWetRef, dspReverbDryRef,
+      dspDelayRef, dspDelayFbRef, dspDelayWetRef, dspDelayDryRef,
+      dspWarmthRef, dspWarmthWetRef, dspWarmthDryRef, dspOutputRef];
+    for (const ref of refs) {
+      try { (ref.current as AudioNode)?.disconnect(); } catch {/* */}
+      (ref as React.MutableRefObject<AudioNode | null>).current = null;
+    }
+  }, []);
 
   // Manual pause: suspend audio without resetting position
   const pauseQueueItem = useCallback(() => {
@@ -1406,7 +2029,19 @@ export default function StudioPage({
         } else {
           micGainRef.current.gain.value = 1;
         }
-        micSrc.connect(micGainRef.current);
+
+        // ── DSP Chain: route mic through processing or bypass ──────────────
+        if (!dspBypassRef.current) {
+          // Build DSP chain: mic → [13 nodes] → output
+          const dspOut = buildDspChain(ctx, micSrc);
+          dspOut.connect(micGainRef.current);
+          // Connect analyser after DSP for processed VU meter
+          if (analyserRef.current) dspOut.connect(analyserRef.current);
+        } else {
+          // Bypass: mic → micGain directly
+          micSrc.connect(micGainRef.current);
+          if (analyserRef.current) micSrc.connect(analyserRef.current);
+        }
 
         // ✔ First real audio source connected — start recording if not already started
         ensureRecordingStarted('mic');
@@ -2673,6 +3308,102 @@ export default function StudioPage({
             )}
 
           </div>
+        </div>
+
+        {/* ── SFX Pads Panel ────────────────────────────────────────────── */}
+        {(
+          <div className="w-full mt-4 bg-neutral-900 border border-emerald-500/20 rounded-2xl shadow-lg overflow-hidden">
+            <div className="px-4 py-3 border-b border-neutral-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">💥</span>
+                <span className="text-sm font-semibold text-emerald-400">مؤثرات صوتية (SFX)</span>
+                {sfxPreloadStatus === 'loading' && (
+                  <span className="w-3 h-3 border-2 border-emerald-500/30 border-t-emerald-400 rounded-full animate-spin" />
+                )}
+                {sfxPreloadStatus === 'ready' && (
+                  <span className="text-[10px] text-emerald-500/60 bg-emerald-500/10 px-1.5 py-0.5 rounded-full">جاهز</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-neutral-500">الصوت</span>
+                <input
+                  type="range" min="0" max="1" step="0.01"
+                  value={sfxVolume}
+                  onChange={e => setSfxVolume(parseFloat(e.target.value))}
+                  className="w-20 h-1 accent-emerald-500 cursor-pointer"
+                />
+                <span className="text-[10px] text-neutral-500 tabular-nums w-8">{Math.round(sfxVolume * 100)}%</span>
+              </div>
+            </div>
+            <div className="p-3 space-y-2">
+              {sfxCategories.length === 0 && (
+                <div className="text-center py-6 text-neutral-500">
+                  <p className="text-sm">لا توجد مؤثرات صوتية</p>
+                  <p className="text-xs mt-1">أضف مؤثرات من لوحة الإدارة</p>
+                </div>
+              )}
+              {sfxCategories.map(cat => (
+                <div key={cat.id} className="bg-neutral-800/50 rounded-xl border border-neutral-800 overflow-hidden">
+                  <button
+                    onClick={() => setOpenSfxCategory(openSfxCategory === cat.id ? null : cat.id)}
+                    className="w-full flex items-center justify-between p-3 hover:bg-emerald-500/10 transition-colors"
+                  >
+                    <span className="text-xs font-medium text-neutral-200">{cat.name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-neutral-500">{cat.tracks.length} مؤثر</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" className={`w-4 h-4 text-neutral-500 transition-transform ${openSfxCategory === cat.id ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </div>
+                  </button>
+                  {openSfxCategory === cat.id && (
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 p-3 pt-0">
+                      {cat.tracks.map(track => {
+                        const isLoaded = sfxBuffersRef.current.has(track.id);
+                        const isActive = activeSfxRef.current.has(track.id);
+                        return (
+                          <button
+                            key={track.id}
+                            onClick={() => isActive ? stopSfx(track.id) : playSfx(track.id)}
+                            disabled={!isLoaded && sfxPreloadStatus !== 'ready'}
+                            className={`relative p-3 rounded-xl border text-xs font-medium transition-all text-center truncate ${
+                              isActive
+                                ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.2)]"
+                                : isLoaded
+                                  ? "bg-neutral-800 border-neutral-700 text-neutral-300 hover:bg-emerald-500/10 hover:border-emerald-500/30 hover:text-emerald-300 active:scale-95"
+                                  : "bg-neutral-900 border-neutral-800 text-neutral-600 cursor-not-allowed opacity-60"
+                            }`}
+                            title={track.title}
+                          >
+                            <span className="block truncate">{track.title}</span>
+                            {isActive && (
+                              <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ))}
+              {/* Stop all SFX button */}
+              <button
+                onClick={stopAllSfx}
+                className="w-full py-2 text-xs font-medium text-red-400 hover:text-red-300 bg-red-500/5 hover:bg-red-500/10 border border-red-500/20 rounded-xl transition-colors"
+              >
+                ⬛ إيقاف جميع المؤثرات
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── DSP Mic Filters Panel ──────────────────────────────────────── */}
+        <div className="w-full mt-4">
+          <DspPanel
+            currentParams={dspParams}
+            onParamsChange={applyDspParams}
+            bypassed={dspBypassed}
+            onBypassToggle={toggleDspBypass}
+            isMicOpen={isMicOpen}
+          />
         </div>
 
         {/* ── Group 4.6 — Queue Panel ───────────────────────────────────────── */}

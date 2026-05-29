@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/auth";
 import jwt from "jsonwebtoken";
+import { resolveCurrentOrNextProgramSession } from "@/lib/resolve-program-session";
 
 /**
  * GET /api/mobile/schedule?stationId=xxx
@@ -9,6 +10,9 @@ import jwt from "jsonwebtoken";
  *   - Show WaitScreen countdown with correct `allowConnectMinutesBefore`
  *   - Enable session-end watchdog with `sessionEndMs`
  *   - Determine if presenter is DIRECT_DJ (no schedule = no waitscreen)
+ *
+ * NOW uses the new Program Schedule System (Program → ProgramScheduleRule → Slot)
+ * via resolveCurrentOrNextProgramSession(), matching the web studio behaviour.
  */
 export async function GET(req: Request) {
   try {
@@ -27,7 +31,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
     }
 
-    const { id: presenterId, role } = decoded;
+    const { id: presenterId } = decoded;
     const url = new URL(req.url);
     const stationId = url.searchParams.get("stationId");
 
@@ -48,45 +52,40 @@ export async function GET(req: Request) {
         scheduledStartTime: null,
         sessionEndTime: null,
         allowConnectMinutesBefore: 0,
+        gateOpen: true,
+        programTitle: null,
+        stationName: null,
       });
     }
 
+    // ── Use the NEW Program Schedule System ──────────────────────────────────
     const now = new Date();
+    const session = await resolveCurrentOrNextProgramSession(presenterId, now);
 
-    // Find the current or next upcoming schedule for this presenter + station
-    // Look for schedules where endDatetime is in the future (not yet ended)
-    const schedule = await prisma.broadcastSchedule.findFirst({
-      where: {
-        presenterId,
-        stationId,
-        isActive: true,
-        endDatetime: { gte: now },
-      },
-      orderBy: { startDatetime: "asc" },
-      select: {
-        id: true,
-        startDatetime: true,
-        endDatetime: true,
-        allowConnectMinutesBefore: true,
-      },
-    });
-
-    if (!schedule) {
-      // No upcoming schedule — treat as direct access (admin or no schedule configured)
+    // Filter to the requested station only
+    if (!session || session.stationId !== stationId) {
+      // No program found for this station — check if there's a session on another station
+      // (for MULTI_STATION presenters who picked the wrong station)
       return NextResponse.json({
         mode: "NO_SCHEDULE",
         scheduledStartTime: null,
         sessionEndTime: null,
         allowConnectMinutesBefore: 0,
+        gateOpen: false,
+        programTitle: null,
+        stationName: null,
       });
     }
 
     return NextResponse.json({
       mode: "SCHEDULED",
-      scheduleId: schedule.id,
-      scheduledStartTime: schedule.startDatetime.toISOString(),
-      sessionEndTime: schedule.endDatetime.toISOString(),
-      allowConnectMinutesBefore: schedule.allowConnectMinutesBefore,
+      scheduleId: session.pseudoScheduleId,
+      scheduledStartTime: session.occurrenceStart.toISOString(),
+      sessionEndTime: session.occurrenceEnd.toISOString(),
+      allowConnectMinutesBefore: session.allowConnectMinutesBefore,
+      gateOpen: session.isCurrent,
+      programTitle: session.programTitle,
+      stationName: session.stationName,
     });
   } catch (error) {
     console.error("Mobile Schedule API Error:", error);

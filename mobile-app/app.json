@@ -8,11 +8,11 @@
     "scheme": "mobileapp",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "EGONAIR needs your microphone to broadcast live audio to the radio station."
+        "NSMicrophoneUsageDescription": "EGONAIR needs your microphone to broadcast live audio to the radio station.",
+        "UIBackgroundModes": ["audio"]
       },
-      "bundleIdentifier": "com.anonymous.mobile-app"
+      "bundleIdentifier": "com.egonair.studio"
     },
     "android": {
       "package": "com.akrammoftah.radiostreamingproject",
@@ -47,7 +47,8 @@
       "expo-secure-store",
       "expo-font",
       "expo-web-browser",
-      "expo-audio"
+      "expo-audio",
+      "expo-asset"
     ],
     "assetBundlePatterns": [
       "**/*"

@@ -139,4 +139,24 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
 ---
 
+---
+
+## DEC-011: Per-Filter DSP Toggles (May 28, 2026)
+**Decision:** Each DSP filter group gets an independent enable/disable toggle instead of only having a global bypass.
+**Rationale:** Presenters need granular control — e.g., keep compression on but disable reverb without adjusting sliders. Global bypass is all-or-nothing.
+**Implementation:** Optional boolean fields in `DspParams` (`filterEnabled`, `eqEnabled`, etc.). Backward compatible — `undefined` treated as enabled.
+
+## DEC-012: RTL Toggle Switches — `dir="ltr"` Pattern (May 28, 2026)
+**Decision:** Toggle switch containers use `dir="ltr"` with explicit `left` CSS positioning.
+**Alternatives Rejected:**
+- `translate-x`: Breaks in RTL — dot exits container
+- `inset-inline-start`: Correct positioning but Tailwind doesn't transition it
+**Rationale:** Toggle switches are universally left-to-right (OFF=left, ON=right) regardless of page direction.
+
+## DEC-013: KB Legacy Cleanup Policy (May 28, 2026)
+**Decision:** All references to egyona, Cloud Run, gcloud, GitHub Actions, SQLite-as-production are marked `[HISTORICAL]` rather than deleted.
+**Rationale:** Preserves context for future agents understanding migration history. Prevents confusion about current architecture.
+
+---
+
 *Add a new decision entry whenever a non-obvious technical or architectural choice is made.*

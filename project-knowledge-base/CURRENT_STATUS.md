@@ -4,7 +4,9 @@
 
 ---
 
-## 🚀 GCP Infrastructure Status (2026-04-29)
+## 🚀 [HISTORICAL] GCP Infrastructure Status (2026-04-29)
+
+> **⚠️ HISTORICAL:** The GCP/Cloud Run infrastructure below was used during an earlier deployment phase. The project has migrated to VPS at 195.35.48.184 (studio.egonair.com).
 
 **Phase 2 — GCP Provisioning: COMPLETE ✅**
 
@@ -26,7 +28,7 @@
 | `DATABASE_URL` | ✅ FIXED (FIX-011) | Unix socket: `host=/cloudsql/egonair-stream-prod:europe-west1:egonair-pg` |
 | `DB_PASSWORD` | ✅ Real value | Raw password for `egonair_app` |
 | `AUTH_SECRET` | ✅ Real value | Generated via `openssl rand -hex 32` |
-| `NEXTAUTH_URL` | ⚠️ NEEDS UPDATE (FIX-016B) | Must be set to `https://egonair-frontend-kjvmkgy5va-ew.a.run.app/stream` |
+| `NEXTAUTH_URL` | ⚠️ NEEDS UPDATE (FIX-016B) | [HISTORICAL] Was `https://egonair-frontend-kjvmkgy5va-ew.a.run.app/stream`. Now using `https://studio.egonair.com` |
 | `egonair-audio-token-secret` | ✅ Real value | Generated via `openssl rand -hex 32` |
 | `egonair-encryption-key` | ✅ Real value, 32 chars | Generated via `openssl rand -hex 16` |
 | `egonair-gcs-bucket` | ✅ Set to `egonair-recordings` | |
@@ -35,11 +37,11 @@
 ### What Has NOT Been Done Yet
 - ❌ No Docker images built
 - ❌ No Cloud Run services deployed yet
-- ❌ No database migration (SQLite → PostgreSQL)
-- ✅ Using direct Cloud Run endpoints (Diamond Rule - no egonair-frontend-729286791857.europe-west1.run.app dependencies)
+- [HISTORICAL — COMPLETED] Database migrated from SQLite to PostgreSQL on VPS
+- [HISTORICAL] Cloud Run endpoints no longer in use. VPS deployment active.
 - ❌ No VPS changes / No WordPress touched
 
-### Cloud Run Deployment Status (2026-04-30)
+### [HISTORICAL] Cloud Run Deployment Status (2026-04-30)
 - ✅ **Docker image built** — `europe-west1-docker.pkg.dev/egonair-stream-prod/egonair/frontend:latest`
 - ✅ **Cloud Run service deployed** — `egonair-frontend` in `europe-west1` (revision `egonair-frontend-00003-ccj`)
 - ✅ **Public access enabled** — unauthenticated requests allowed
@@ -53,7 +55,9 @@
 - ⚠️ **`NEXTAUTH_URL` secret needs update** — must be `https://egonair-frontend-kjvmkgy5va-ew.a.run.app/stream`
 ---
 
-## ⏸️ CLOUD DEPLOYMENT PAUSED — Return to Local Development
+## ⏸️ [HISTORICAL] Cloud Deployment Phase (Superseded by VPS)
+
+> This section describes the Cloud Run deployment attempt which has been superseded by VPS deployment at studio.egonair.com.
 
 **Paused at:** 2026-04-30 22:50
 
@@ -127,6 +131,8 @@ Every Cloud Shell / Cloud Build task must complete within 5 minutes. If it takes
 | `src/app/providers.tsx` | NEW — unused, left on disk |
 | `src/app/layout.tsx` | Plain `{children}`, no Providers |
 
+> **[HISTORICAL — Cloud Build commands no longer applicable]**
+
 ### Build command required (Cloud Shell)
 ```bash
 gcloud builds submit \
@@ -167,7 +173,7 @@ wiring it end-to-end through the production stack.
 | Presenter list (`/admin/presenters`) | ✅ Complete | Lists all presenters |
 | Add presenter (`/admin/presenters/new`) | ✅ Complete | Creates user + profile + validity + SonicPanel credentials |
 | Edit presenter (`/admin/presenters/[id]/edit`) | ✅ Complete | Fixed Next.js 15 async params bug |
-| Presenter SonicPanel credentials | ✅ Complete | Stored AES-256-GCM encrypted in SQLite |
+| Presenter SonicPanel credentials | ✅ Complete | Stored AES-256-GCM encrypted in PostgreSQL (previously SQLite during development) |
 | Media library (`/admin/media`) | ✅ Complete | Categories (BACKGROUND / SONG) + tracks |
 | Live sessions monitor (`/admin/live`) | ✅ Complete | Auto-refreshes every 5 seconds |
 | Phase 1 status checklist (`/admin/status`) | ✅ Complete | Progress tracking page |
@@ -207,7 +213,7 @@ wiring it end-to-end through the production stack.
 | Per-presenter credential delivery to backend-audio (via validate) | ✅ Complete | `validate/route.ts` loads + decrypts `SonicPanelCredential` from DB and returns `sonicPanel` object. `index.ts` uses it for the live handshake. |
 | Session lifecycle notifications to Next.js | ✅ Fully wired | Next.js endpoints + backend-audio wired at 5 call sites: SHOUTcast accepted, socket error, handshake rejected, FFmpeg error, WS close. |
 
-### Database (Prisma / SQLite)
+### Database (Prisma / PostgreSQL)
 
 | Model | Status |
 |---|---|
@@ -262,7 +268,7 @@ wiring it end-to-end through the production stack.
 **Backup folder:** `backups/2026-04-28_16-55-safe-exit/`  
 **All services stopped:** Next.js (3000) ✅ | backend-audio (4001) ✅ | SHOUTcast (4896) ✅  
 **No presenter left ON AIR** ✅  
-**Database integrity:** `frontend/prisma/dev.db` (132 KB) intact, backed up  
+[HISTORICAL] Database was SQLite `dev.db` during development. Now PostgreSQL on VPS.  
 **Recordings:** 25 files, 57 MB total, NOT copied (see `RECORDINGS_INVENTORY.md`)  
 
 ---
@@ -365,7 +371,7 @@ wiring it end-to-end through the production stack.
 4. **Long endurance test** — 2+ hour sustained broadcast stress test
 5. **Debug cleanup** — Remove [DIAG] console logs and TEST FILE TO MIXER button
 6. **Screenshots / Handoff package** — Documentation for production launch
-7. **Cloud deployment** — Only after local 100% confirmed
+7. **~~Cloud deployment~~** — [No longer applicable — VPS deployment active at studio.egonair.com]
 
 
 ---
@@ -400,7 +406,7 @@ wiring it end-to-end through the production stack.
 5. **Long endurance test** — 2+ hour sustained broadcast stress test
 6. **Debug cleanup** — Remove [DIAG] console logs and TEST FILE TO MIXER button
 7. **Screenshots / Handoff package** — Documentation for production launch
-8. **Cloud deployment** — Only after local 100% confirmed
+8. **~~Cloud deployment~~** — [No longer applicable — VPS deployment active at studio.egonair.com]
 
 
 ---
@@ -424,7 +430,7 @@ wiring it end-to-end through the production stack.
 3. **Long endurance test** — 2+ hour sustained broadcast stress test
 4. **Debug cleanup** — Remove [DIAG] console logs and TEST FILE TO MIXER button
 5. **Screenshots / Handoff package** — Documentation for production launch
-6. **Cloud deployment** — Only after local 100% confirmed
+6. **~~Cloud deployment~~** — [No longer applicable — VPS deployment active at studio.egonair.com]
 
 
 ---
@@ -523,7 +529,7 @@ Next session must diagnose with console logs before any other work.
 3. **Long endurance test** — 2+ hour sustained broadcast stress test
 4. **Debug cleanup** — Remove [DIAG] console logs and TEST FILE TO MIXER button
 5. **Screenshots / Handoff package** — Documentation for production launch
-6. **Cloud deployment** — Only after local 100% confirmed
+6. **~~Cloud deployment~~** — [No longer applicable — VPS deployment active at studio.egonair.com]
 
 ---
 
@@ -569,7 +575,7 @@ Next session must diagnose with console logs before any other work.
 3. Debug log cleanup (remove [DIAG] + TEST FILE TO MIXER button)
 4. Long endurance broadcast test (2+ hours)
 5. Screenshots / handoff package
-6. Cloud deployment (only after all local tests pass)
+6. ~~Cloud deployment~~ [No longer applicable — VPS deployment active]
 
 ---
 
@@ -607,7 +613,7 @@ Next session must diagnose with console logs before any other work.
 4. Debug log cleanup ([DIAG] console logs + TEST FILE TO MIXER button)
 5. Long endurance broadcast test (2+ hours)
 6. Screenshots / handoff package
-7. Cloud deployment
+7. ~~Cloud deployment~~ [No longer applicable — VPS deployment active]
 
 ---
 
@@ -645,7 +651,7 @@ Next session must diagnose with console logs before any other work.
 | 6 | Design alignment pass | ⏳ Not started |
 | 7 | Debug log cleanup ([DIAG] + TEST FILE TO MIXER) | ⏳ Not started |
 | 8 | Long endurance broadcast test (2+ hrs) | ⏳ Not started |
-| 9 | Cloud deployment | ⏳ After all local tests pass |
+| 9 | ~~Cloud deployment~~ [VPS deployment active] | ✅ VPS at studio.egonair.com |
 
 ---
 
@@ -687,7 +693,7 @@ Next session must diagnose with console logs before any other work.
 | 4 | Special/exception episode types | ⏳ Not started |
 | 5 | Debug log cleanup ([DIAG] + TEST FILE TO MIXER) | ⏳ Not started |
 | 6 | Long endurance broadcast test (2+ hrs) | ⏳ Not started |
-| 7 | Cloud deployment | ⏳ After all local tests pass |
+| 7 | ~~Cloud deployment~~ [VPS deployment active] | ✅ VPS at studio.egonair.com |
 
 ---
 
@@ -724,7 +730,7 @@ Next session must diagnose with console logs before any other work.
 7. 🟡 Presenter + Station DJ override
 8. 🟡 Station Manager role
 9. 🟢 Calendar UI, dashboard stats, design alignment
-10. 🟢 Debug cleanup, endurance test, Cloud deployment
+10. 🟢 Debug cleanup, endurance test, ~~Cloud deployment~~ [VPS active]
 
 ### Recommended Next Phase
 Fix **WaitScreen countdown mismatch** (if confirmed still present)
@@ -1587,3 +1593,59 @@ None — both `ADMIN-STATION-MANAGER-UI-ARCHITECTURE-ALIGNMENT` and `LOGIN-DARK-
 - uploaded logo rendering
 - uploads proxy fix
 - systemName/systemSubtitle wiring
+
+---
+
+## STATUS UPDATE: 2026-05-28 19:08 — MOBILE-STUDIO-AUDIT-REDESIGN-COMPLETE ✅
+
+*Last updated: 2026-05-28 19:08 (Africa/Cairo)*
+
+### Current Checkpoint
+**MOBILE-STUDIO-AUDIT-REDESIGN-COMPLETE**
+
+### What Was Done This Session
+
+| Item | Status |
+|------|--------|
+| Mobile studio audit (8 bugs found & documented) | ✅ COMPLETE |
+| Schedule API migration (`BroadcastSchedule` → `resolveCurrentOrNextProgramSession`) | ✅ DEPLOYED |
+| Stations API — `presenterMode` field | ✅ DEPLOYED |
+| Dashboard redesign: SINGLE_STATION mode | ✅ DEPLOYED |
+| Dashboard redesign: MULTI_STATION mode | ✅ DEPLOYED |
+| Dashboard redesign: DIRECT_DJ mode | ✅ DEPLOYED |
+| NO_SCHEDULE blocking (blocked UI instead of studio access) | ✅ DONE |
+| VirtualizedList crash fix (FlatList → map) | ✅ DONE |
+| `allowConnectMinutesBefore` default fix (10 → 5) | ✅ DONE |
+| Background auto-resume on queue stop | ✅ DONE |
+| Queue/bg `onFileComplete` cascade bug fix | ✅ DONE |
+| `manualStopRef` async guard (100ms setTimeout) | ✅ DONE |
+| Admin programs production crash fix | ✅ DEPLOYED |
+| Web studio recordings pagination/filtering | ✅ DEPLOYED |
+| Mobile app built and installed on Dina's iPhone | ✅ DONE |
+| API changes deployed to VPS + built + PM2 restarted | ✅ DONE |
+
+### Backup Location
+`/Users/apple/Downloads/Akram_Developments/radio_streaming_project_BACKUP_2026-05-28_1909/`
+
+### Currently Working Modules
+- **Mobile Studio:** Login → Dashboard (3 presenter types) → Schedule/Countdown → Gate → Preflight → Studio → Mic/BG/Queue → Disconnect
+- **Web Studio:** Full feature parity — recordings with pagination/filtering
+- **Admin:** Programs CRUD, schedule management, settings, presenters, stations
+- **Audio Engine:** Mic + background + queue + ducking + `manualStopRef` cascade guard
+
+### Open Issues (Priority Order)
+1. 🟡 Audio token schedule validation (`/api/mobile/audio-token/route.ts`)
+2. 🟡 Session-end watchdog (auto-disconnect at program end)
+3. 🟡 Background ↔ Queue crossfade timing (smooth transitions)
+4. 🟡 Audio device selection (mic/monitor picker)
+5. 🟢 Queue-to-Queue crossfade (Phase 4)
+6. 🟢 SFX pads (Phase 5)
+7. 🟢 DSP mic filters (Phase 6)
+8. 🟢 Android build (Phase 7)
+
+### Key Technical Learnings This Session
+- **Native bridge events are asynchronous.** `stopFile()` fires `onFileComplete` on the next event loop tick, not synchronously. Guards must use `setTimeout` to stay up.
+- **React state updates are async.** `setQueue()` doesn't update immediately — `handleFileComplete` may read stale state if called in the same tick.
+- **VirtualizedList inside ScrollView crashes on iOS 16.** Always use `.map()` for lists < 50 items.
+- **Legacy `BroadcastSchedule` table is obsolete.** All schedule logic must go through `resolveCurrentOrNextProgramSession()`.
+

@@ -614,12 +614,21 @@ wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
   // ── Step 7: Receive audio chunks ──────────────────────────────────────────
   ws.on('message', (message: WebSocket.RawData, isBinary: boolean) => {
     chunkCount++;
+    let buffer: Buffer;
+
     if (!isBinary) {
-      console.log(`[Data] Text frame (ignored): ${(message as Buffer).toString().slice(0, 80)}`);
-      return;
+      const text = message.toString();
+      // If it looks like a JSON message, ignore it
+      if (text.trim().startsWith('{')) {
+        console.log(`[Data] Text JSON frame (ignored): ${text.slice(0, 80)}`);
+        return;
+      }
+      // Otherwise treat it as a base64 audio chunk
+      buffer = Buffer.from(text, 'base64');
+    } else {
+      buffer = message as Buffer;
     }
 
-    const buffer = message as Buffer;
     totalBytesIn += buffer.length;
 
     // Always write to local WebM recording — independent of SHOUTcast
