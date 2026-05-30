@@ -3,6 +3,7 @@
 import { doLogin } from "./actions";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 
 export default function LoginForm() {
   const [username,  setUsername]  = useState("");
@@ -10,6 +11,7 @@ export default function LoginForm() {
   const [error,     setError]     = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const t = useTranslations("auth");
 
   // ── All original submit + redirect logic — unchanged ─────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
@@ -32,7 +34,7 @@ export default function LoginForm() {
         }
       }
     } catch {
-      setError("حدث خطأ في الاتصال");
+      setError(t("loginError"));
     } finally {
       setIsLoading(false);
     }
@@ -49,7 +51,7 @@ export default function LoginForm() {
   const labelCls = "block text-xs font-semibold tracking-wide mb-1.5 text-slate-400";
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5" dir="rtl">
+    <form onSubmit={handleSubmit} className="space-y-5">
 
       {/* ── Error banner ─────────────────────────────────────────────────── */}
       {error && (
@@ -72,7 +74,7 @@ export default function LoginForm() {
       {/* ── Username field ────────────────────────────────────────────────── */}
       <div>
         <label className={labelCls} htmlFor="login-username">
-          اسم المستخدم
+          {t("username")}
         </label>
         <div className="relative">
           <span className="absolute inset-y-0 right-3.5 flex items-center text-slate-600 pointer-events-none">
@@ -100,7 +102,7 @@ export default function LoginForm() {
       {/* ── Password field ────────────────────────────────────────────────── */}
       <div>
         <label className={labelCls} htmlFor="login-password">
-          كلمة المرور
+          {t("password")}
         </label>
         <div className="relative">
           <span className="absolute inset-y-0 right-3.5 flex items-center text-slate-600 pointer-events-none">
@@ -142,7 +144,7 @@ export default function LoginForm() {
           {isLoading ? (
             <>
               <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin flex-shrink-0" />
-              جاري الدخول...
+              {t("loginButton")}...
             </>
           ) : (
             <>
@@ -152,7 +154,7 @@ export default function LoginForm() {
                 <polyline points="10 17 15 12 10 7"/>
                 <line x1="15" y1="12" x2="3" y2="12"/>
               </svg>
-              تسجيل الدخول
+              {t("login")}
             </>
           )}
         </span>

@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import DspPanel from "@/components/studio/DspPanel";
 import { DEFAULT_DSP_PARAMS, type DspParams } from "@/lib/dsp-presets";
+import { useLocale } from "next-intl";
+import { isRtl } from "@/i18n/config";
 
 // ── Types ──
 import type {
@@ -193,6 +195,9 @@ export default function StudioPage({
   scheduledStationId,
 }: StudioProps) {
   // ── Core state (not in hooks) ──
+  const locale = useLocale();
+  const dir = isRtl(locale) ? 'rtl' : 'ltr';
+
   const [isMicOpen, setIsMicOpen]               = useState(false);
   const [isConnected, setIsConnected]           = useState(false);
   const [autoDisconnectMsg, setAutoDisconnectMsg] = useState<string | null>(null);
@@ -734,7 +739,7 @@ export default function StudioPage({
   };
 
   return (
-    <div dir="rtl" className="min-h-screen bg-[#0f0f1a] text-neutral-100 font-sans relative overflow-hidden">
+    <div dir={dir} className="min-h-screen bg-[#0f0f1a] text-neutral-100 font-sans relative overflow-hidden">
       {/* ── Global overlays ── */}
       {autoDisconnectMsg && (
         <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-full shadow-xl backdrop-blur-md font-bold text-sm text-center border animate-pulse ${

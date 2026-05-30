@@ -1,6 +1,8 @@
 import { auth, prisma }          from "@/auth";
 import { redirect, notFound }    from "next/navigation";
 import Link                      from "next/link";
+import { getTranslations, getLocale } from "next-intl/server";
+import { isRtl }                 from "@/i18n/config";
 import { StationCleanupButton }  from "./cleanup-button";
 import {
   getStationDependencyCounts,
@@ -23,6 +25,10 @@ export default async function StationDeletePage({
 
   const { id: stationId } = await params;
 
+  const t = await getTranslations("admin.stations");
+  const locale = await getLocale();
+  const dir = isRtl(locale) ? 'rtl' : 'ltr';
+
   const station = await prisma.station.findUnique({
     where:  { id: stationId },
     select: { id: true, name: true, slug: true, isActive: true, streamHost: true, streamPort: true, publicUrl: true },
@@ -35,7 +41,7 @@ export default async function StationDeletePage({
   // Only programs are a real FK RESTRICT blocker for station.delete.
   // PresenterStation/StationManager/DefaultCredential cascade automatically.
   const blockers: string[] = [];
-  if (deps.programs > 0) blockers.push(`${deps.programs} برنامج`);
+  if (deps.programs > 0) blockers.push(t("depBlockerProgram", { count: deps.programs }));
 
   type DepRow = {
     label:       string;
@@ -47,126 +53,126 @@ export default async function StationDeletePage({
 
   const depRows: DepRow[] = [
     {
-      label: "برامج المحطة",
+      label: t("depPrograms"),
       count: deps.programs,
       safe:  deps.programs === 0,
       note:  deps.programs === 0
-        ? "لا توجد برامج — يمكن حذف المحطة."
-        : "يجب حذف جميع البرامج أولاً (تبعية FK مباشرة). التسجيلات ستُحفظ.",
+        ? t("depProgramsClean")
+        : t("depProgramsBlocking"),
       actionSlot: deps.programs > 0 ? (
         <StationCleanupButton
           stationId={stationId}
           action={cleanupStationPrograms}
-          buttonLabel={`🗑 حذف ${deps.programs} برنامج`}
+          buttonLabel={t("deletePrograms", { count: deps.programs })}
           variant="danger"
-          confirmText={`هل أنت متأكد؟ سيتم حذف جميع البرامج (${deps.programs}) المرتبطة بالمحطة.\n\nالتسجيلات لن تُحذف — سيتم فقط فصلها عن البرامج.\nقواعد الجدول وفتراته ستُحذف تلقائياً.`}
+          confirmText={t("deleteProgramsConfirm", { count: deps.programs })}
         />
       ) : undefined,
     },
     {
-      label: "روابط المذيعين",
+      label: t("depPresenterLinks"),
       count: deps.presenterStationLinks,
       safe:  true, // cascades automatically — info only
       note:  deps.presenterStationLinks === 0
-        ? "لا توجد روابط مذيعين."
-        : `${deps.presenterStationLinks} رابط سيُحذف تلقائياً عند حذف المحطة (Cascade). حسابات المذيعين لن تُحذف.`,
+        ? t("depPresenterLinksClean")
+        : t("depPresenterLinksNote", { count: deps.presenterStationLinks }),
       actionSlot: deps.presenterStationLinks > 0 ? (
         <StationCleanupButton
           stationId={stationId}
           action={unlinkStationPresenters}
-          buttonLabel={`فصل ${deps.presenterStationLinks} مذيع`}
+          buttonLabel={t("unlinkPresenters", { count: deps.presenterStationLinks })}
           variant="warning"
-          confirmText={`هل أنت متأكد؟ سيتم تعطيل روابط ${deps.presenterStationLinks} مذيع بهذه المحطة.\n\nحسابات المذيعين لن تُحذف. مذيعو DIRECT_DJ لن يتأثروا.`}
+          confirmText={t("unlinkPresentersConfirm", { count: deps.presenterStationLinks })}
         />
       ) : undefined,
     },
     {
-      label: "مذيعو المحطة الواحدة",
+      label: t("depSingleStationPresenters"),
       count: deps.singleStationPresenters,
       safe:  true,
       note:  deps.singleStationPresenters === 0
-        ? "لا يوجد مذيعون مرتبطون بهذه المحطة فقط."
-        : `⚠️ ${deps.singleStationPresenters} مذيع من نوع SINGLE_STATION مرتبط بهذه المحطة فقط. بعد حذف المحطة ستنقطع صلتهم بأي محطة — اعتني بتعيينهم لمحطة أخرى أو حذفهم أولاً.`,
+        ? t("depSingleStationPresentersClean")
+        : t("depSingleStationPresentersNote", { count: deps.singleStationPresenters }),
     },
     {
-      label: "مديرو المحطة",
+      label: t("depManagers"),
       count: deps.stationManagers,
       safe:  true, // cascades automatically
       note:  deps.stationManagers === 0
-        ? "لا يوجد مديرون مرتبطون."
-        : `${deps.stationManagers} تعيين سيُحذف تلقائياً عند حذف المحطة. حسابات المديرين لن تُحذف.`,
+        ? t("depManagersClean")
+        : t("depManagersNote", { count: deps.stationManagers }),
       actionSlot: deps.stationManagers > 0 ? (
         <StationCleanupButton
           stationId={stationId}
           action={removeStationManagers}
-          buttonLabel={`عزل ${deps.stationManagers} مدير`}
+          buttonLabel={t("removeManagers", { count: deps.stationManagers })}
           variant="warning"
-          confirmText={`هل أنت متأكد؟ سيتم حذف تعيينات ${deps.stationManagers} مدير من هذه المحطة.\n\nحسابات المديرين لن تُحذف.`}
+          confirmText={t("removeManagersConfirm", { count: deps.stationManagers })}
         />
       ) : undefined,
     },
     {
-      label: "بيانات DJ الافتراضية",
-      count: deps.defaultCredential ? "موجودة" : "غير موجودة",
+      label: t("depDefaultCred"),
+      count: deps.defaultCredential ? t("depDefaultCredExists") : t("depDefaultCredMissing"),
       safe:  true, // cascades automatically
       note:  deps.defaultCredential
-        ? `بيانات DJ الافتراضية (${deps.defaultCredential.djUsername}) ستُحذف تلقائياً عند حذف المحطة (Cascade).`
-        : "لا توجد بيانات DJ افتراضية.",
+        ? t("depDefaultCredNote", { username: deps.defaultCredential.djUsername })
+        : t("depDefaultCredClean"),
       actionSlot: deps.defaultCredential ? (
         <StationCleanupButton
           stationId={stationId}
           action={deleteStationDefaultCredential}
-          buttonLabel="حذف بيانات DJ"
+          buttonLabel={t("deleteDjCred")}
           variant="warning"
-          confirmText="هل أنت متأكد؟ سيتم حذف بيانات DJ الافتراضية للمحطة."
+          confirmText={t("deleteDjCredConfirm")}
         />
       ) : undefined,
     },
     {
-      label: "التسجيلات المرتبطة",
+      label: t("depRecordings"),
       count: deps.recordings,
       safe:  true, // Recording.stationId → SetNull on station delete
       note:  deps.recordings === 0
-        ? "لا توجد تسجيلات مرتبطة."
-        : `${deps.recordings} تسجيل — لن تُحذف عند حذف المحطة. سيتم فقط فصلها (stationId → null). ملفات الصوت محفوظة.`,
+        ? t("depRecordingsClean")
+        : t("depRecordingsNote", { count: deps.recordings }),
       actionSlot: deps.recordings > 0 ? (
         <Link
           href={`/admin/recordings?stationId=${stationId}`}
           className="text-xs text-amber-400 hover:text-amber-300 border border-amber-800/40 rounded-lg px-3 py-1.5 transition-colors whitespace-nowrap"
         >
-          عرض التسجيلات ←
+          {t("viewRecordings")}
         </Link>
       ) : undefined,
     },
     {
-      label: "بيانات SonicPanel للمذيعين",
+      label: t("depSonicPanel"),
       count: deps.sonicCredentials,
       safe:  true, // SonicPanelCredential.stationId → SetNull
       note:  deps.sonicCredentials === 0
-        ? "لا توجد بيانات."
-        : `${deps.sonicCredentials} سجل — سيتم فصلها (stationId → null) دون حذفها.`,
+        ? t("depSonicPanelClean")
+        : t("depSonicPanelNote", { count: deps.sonicCredentials }),
     },
     {
-      label: "جداول البث القديمة",
+      label: t("depBroadcastSchedules"),
       count: deps.broadcastSchedules,
       safe:  true, // BroadcastSchedule.stationId → SetNull
       note:  deps.broadcastSchedules === 0
-        ? "لا توجد."
-        : `${deps.broadcastSchedules} جدول بث قديم — سيتم فصله (stationId → null) دون حذفه.`,
+        ? t("depBroadcastSchedulesClean")
+        : t("depBroadcastSchedulesNote", { count: deps.broadcastSchedules }),
     },
   ];
 
   return (
-    <div dir="rtl" className="min-h-screen bg-neutral-950 text-neutral-100 p-6 md:p-10">
+    <div dir={dir} className="min-h-screen bg-neutral-950 text-neutral-100 p-6 md:p-10">
       <div className="max-w-3xl mx-auto space-y-6">
 
         {/* ── Breadcrumb ── */}
         <div className="flex items-center gap-2 text-sm text-neutral-500">
-          <Link href="/admin" className="hover:text-neutral-300 transition-colors">الإدارة</Link>
+          <Link href="/admin" className="hover:text-neutral-300 transition-colors">{t("breadcrumbAdmin")}</Link>
           <span>/</span>
-          <Link href="/admin/stations" className="hover:text-neutral-300 transition-colors">المحطات</Link>
+          <Link href="/admin/stations" className="hover:text-neutral-300 transition-colors">{t("breadcrumbStations")}</Link>
           <span>/</span>
-          <span className="text-red-400 font-medium">حذف المحطة</span>
+          <span className="text-red-400 font-medium">{t("breadcrumbDelete")}</span>
         </div>
 
         {/* ── Station summary ── */}
@@ -181,7 +187,7 @@ export default async function StationDeletePage({
                 ? "bg-emerald-950/40 text-emerald-400 border-emerald-800/40"
                 : "bg-neutral-800 text-neutral-500 border-neutral-700"
             }`}>
-              {station.isActive ? "نشطة" : "معطّلة"}
+              {station.isActive ? t("statusActive") : t("statusDisabled")}
             </span>
           </div>
           {(station.streamHost || station.publicUrl) && (
@@ -197,9 +203,9 @@ export default async function StationDeletePage({
         {/* ── Dependency checklist ── */}
         <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden">
           <div className="px-6 py-4 border-b border-neutral-800">
-            <h2 className="text-sm font-semibold text-neutral-300">قائمة التبعيات</h2>
+            <h2 className="text-sm font-semibold text-neutral-300">{t("dependencyList")}</h2>
             <p className="text-xs text-neutral-500 mt-0.5">
-              يجب تنظيف التبعيات الحمراء قبل الحذف النهائي.
+              {t("dependencyListDesc")}
             </p>
           </div>
           <div className="divide-y divide-neutral-800/60">
@@ -234,27 +240,26 @@ export default async function StationDeletePage({
         {/* ── Blocker card or final delete ── */}
         {!deps.isHardDeleteSafe ? (
           <div className="bg-red-950/30 border border-red-800/50 rounded-2xl px-6 py-5">
-            <p className="text-sm font-semibold text-red-400 mb-1">🔒 الحذف النهائي محظور</p>
+            <p className="text-sm font-semibold text-red-400 mb-1">{t("hardDeleteBlocked")}</p>
             <p className="text-xs text-red-300/80">
-              لا يمكن حذف المحطة حتى يتم تنظيف:{" "}
+              {t("hardDeleteBlockedDesc")}{" "}
               <span className="font-mono font-bold">{blockers.join(" · ")}</span>
             </p>
           </div>
         ) : (
           <div className="bg-neutral-900 border border-neutral-800 rounded-2xl px-6 py-5 space-y-4">
             <div>
-              <p className="text-sm font-semibold text-emerald-400 mb-1">✅ جاهز للحذف النهائي</p>
+              <p className="text-sm font-semibold text-emerald-400 mb-1">{t("hardDeleteReady")}</p>
               <p className="text-xs text-neutral-400">
-                جميع التبعيات الحرجة نُظِّفت. التسجيلات محفوظة وستُفصل تلقائياً.
-                بيانات المذيعين وحساباتهم لن تُحذف.
+                {t("hardDeleteReadyDesc")}
               </p>
             </div>
             <StationCleanupButton
               stationId={stationId}
               action={hardDeleteStation}
-              buttonLabel="🗑 حذف المحطة نهائياً"
+              buttonLabel={t("hardDeleteButton")}
               variant="danger"
-              confirmText={`هل أنت متأكد تماماً؟\n\nسيتم حذف المحطة "${station.name}" نهائياً.\n\n• حسابات المذيعين والمديرين لن تُحذف.\n• التسجيلات لن تُحذف — ستُفصل فقط عن المحطة.\n\nلا يمكن التراجع عن هذا الإجراء.`}
+              confirmText={t("hardDeleteConfirm", { name: station.name })}
             />
           </div>
         )}
@@ -263,7 +268,7 @@ export default async function StationDeletePage({
         <div className="text-center">
           <Link href="/admin/stations"
             className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors">
-            ← العودة إلى قائمة المحطات
+            {t("backToStationsList")}
           </Link>
         </div>
 

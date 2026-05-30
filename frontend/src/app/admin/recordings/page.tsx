@@ -10,46 +10,14 @@ import { AdminRecordingsTypeSortFilter } from "./recordings-type-sort-filter";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { EmptyState }  from "@/components/ui/EmptyState";
 import { AdminPageShell } from "@/components/ui";
+import { getTranslations, getLocale } from "next-intl/server";
 
-export const metadata = {
-  title: "أرشيف التسجيلات - الإدارة - EGONAIR",
-};
+export async function generateMetadata() {
+  const t = await getTranslations('admin.recordings');
+  return { title: `${t('title')} - EGONAIR` };
+}
 
 export const dynamic = "force-dynamic";
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatArabicDate(d: Date): string {
-  return new Intl.DateTimeFormat("ar-EG", {
-    timeZone: "Africa/Cairo",
-    weekday:  "long",
-    year:     "numeric",
-    month:    "long",
-    day:      "numeric",
-  }).format(d);
-}
-
-function formatArabicTime(d: Date): string {
-  return new Intl.DateTimeFormat("ar-EG", {
-    timeZone: "Africa/Cairo",
-    hour:     "numeric",
-    minute:   "2-digit",
-  }).format(d);
-}
-
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  if (m === 0) return `${s} ث`;
-  if (s === 0) return `${m} د`;
-  return `${m} د ${s} ث`;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024)         return `${bytes} بايت`;
-  if (bytes < 1024 * 1024)  return `${(bytes / 1024).toFixed(1)} كيلوبايت`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} ميغابايت`;
-}
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
@@ -69,6 +37,11 @@ export default async function AdminRecordingsPage({
   if (!session || (session.user as { role?: string }).role !== "ADMIN") {
     redirect("/login");
   }
+
+  const t = await getTranslations('admin.recordings');
+  const tc = await getTranslations('common');
+  const tn = await getTranslations('nav');
+  const locale = await getLocale();
 
   // ── 2. Resolve filter param (Next.js 15 async searchParams) ───────────────
   const { presenterId: filterPresenterId, presenterIds: filterPresenterIds, stationIds: filterStationIds, page: pageParam, pageSize: pageSizeParam, q: qParam, dateFrom: dateFromParam, dateTo: dateToParam, presenterMode: presenterModeParam, fileType: fileTypeParam, sort: sortParam } = await searchParams;
@@ -266,10 +239,10 @@ export default async function AdminRecordingsPage({
     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-neutral-900 border border-neutral-800 rounded-2xl p-4 my-6 gap-4">
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
         <div className="text-sm text-neutral-400">
-          صفحة <span className="text-neutral-200 font-medium">{page}</span> من <span className="text-neutral-200 font-medium">{totalPages}</span>
+          {t('page')} <span className="text-neutral-200 font-medium">{page}</span> {t('of')} <span className="text-neutral-200 font-medium">{totalPages}</span>
         </div>
         <div className="text-xs text-neutral-500">
-          (إجمالي {totalCount} تسجيل)
+          ({t('total')} {totalCount} {t('recordingUnit')})
         </div>
       </div>
 
@@ -280,7 +253,7 @@ export default async function AdminRecordingsPage({
           {q && <input type="hidden" name="q" value={q} />}
           {dateFrom && <input type="hidden" name="dateFrom" value={dateFrom} />}
           {dateTo && <input type="hidden" name="dateTo" value={dateTo} />}
-          <label htmlFor="pageSize" className="text-xs font-medium text-neutral-400 mr-1">عدد النتائج:</label>
+          <label htmlFor="pageSize" className="text-xs font-medium text-neutral-400 mr-1">{t('resultsCount')}:</label>
           <select
             id="pageSize"
             name="pageSize"
@@ -296,19 +269,19 @@ export default async function AdminRecordingsPage({
           </select>
           <button type="submit" className="px-2 py-1 text-white text-xs font-medium border rounded-md transition-colors shadow-sm mr-1"
             style={{ background: "var(--eg-primary)", borderColor: "var(--eg-primary)", boxShadow: "0 1px 4px color-mix(in srgb, var(--eg-primary) 25%, transparent)" }}
-          >تطبيق</button>
+          >{tc('apply')}</button>
         </form>
 
         <div className="flex items-center gap-2">
           {page > 1 ? (
-            <Link href={buildUrl(page - 1)} className="px-4 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-medium rounded-lg border border-neutral-700 transition-colors">السابق</Link>
+            <Link href={buildUrl(page - 1)} className="px-4 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-medium rounded-lg border border-neutral-700 transition-colors">{t('previous')}</Link>
           ) : (
-            <span className="px-4 py-1.5 bg-neutral-800/30 text-neutral-600 text-xs font-medium rounded-lg border border-neutral-800/50 cursor-not-allowed">السابق</span>
+            <span className="px-4 py-1.5 bg-neutral-800/30 text-neutral-600 text-xs font-medium rounded-lg border border-neutral-800/50 cursor-not-allowed">{t('previous')}</span>
           )}
           {page < totalPages ? (
-            <Link href={buildUrl(page + 1)} className="px-4 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-medium rounded-lg border border-neutral-700 transition-colors">التالي</Link>
+            <Link href={buildUrl(page + 1)} className="px-4 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-medium rounded-lg border border-neutral-700 transition-colors">{t('next')}</Link>
           ) : (
-            <span className="px-4 py-1.5 bg-neutral-800/30 text-neutral-600 text-xs font-medium rounded-lg border border-neutral-800/50 cursor-not-allowed">التالي</span>
+            <span className="px-4 py-1.5 bg-neutral-800/30 text-neutral-600 text-xs font-medium rounded-lg border border-neutral-800/50 cursor-not-allowed">{t('next')}</span>
           )}
         </div>
       </div>
@@ -327,10 +300,10 @@ export default async function AdminRecordingsPage({
               className="text-3xl font-bold bg-clip-text text-transparent"
               style={{ backgroundImage: "linear-gradient(to left, var(--eg-primary), var(--eg-accent))" }}
             >
-              أرشيف التسجيلات
+              {t('title')}
             </h1>
             <p className="text-sm text-neutral-500 mt-1">
-              جميع تسجيلات الجلسات عبر كافة المذيعين
+              {t('subtitle')}
             </p>
           </div>
 
@@ -339,7 +312,7 @@ export default async function AdminRecordingsPage({
             {!dbError && (
               <StatusBadge
                 label={
-                  recordings.length === 1 ? "تسجيل واحد" : `${recordings.length} تسجيل`
+                  recordings.length === 1 ? t('oneRecording') : `${recordings.length} ${t('recordingUnit')}`
                 }
                 variant="info"
                 dot
@@ -349,7 +322,7 @@ export default async function AdminRecordingsPage({
               href="/admin"
               className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-neutral-400 hover:text-neutral-200 border border-neutral-800 text-sm rounded-lg transition-colors"
             >
-              لوحة التحكم
+              {tn('adminDashboard')}
             </Link>
           </div>
         </div>
@@ -391,7 +364,7 @@ export default async function AdminRecordingsPage({
         {dbError && (
           <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-6 text-center">
             <p className="text-red-400 font-medium">
-              تعذّر تحميل التسجيلات. يرجى المحاولة مجدداً.
+              {t('loadError')}
             </p>
           </div>
         )}
@@ -403,13 +376,13 @@ export default async function AdminRecordingsPage({
               icon="🎤"
               title={
                 (activeIds.length > 0 || activeStationIds.length > 0 || q || dateFrom || dateTo)
-                  ? "لا توجد تسجيلات تتطابق مع بحثك"
-                  : "لا توجد تسجيلات بعد"
+                  ? t('noRecordingsMatchSearch')
+                  : t('noRecordings')
               }
               description={
                 (activeIds.length > 0 || activeStationIds.length > 0 || q || dateFrom || dateTo)
-                  ? "جرب تعديل الفلاتر أو مسحها لرؤية نتائج أكثر."
-                  : "ستظهر هنا تسجيلات الجلسات فور انتهاء أي جلسة بث."
+                  ? t('tryModifyFilters')
+                  : t('recordingsWillAppear')
               }
               action={
                 (activeIds.length > 0 || activeStationIds.length > 0 || q || dateFrom || dateTo) ? (
@@ -417,7 +390,7 @@ export default async function AdminRecordingsPage({
                     href={`/admin/recordings?pageSize=${finalPageSize}`}
                     className="inline-flex items-center gap-1.5 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 border border-neutral-700 text-sm rounded-lg transition-colors"
                   >
-                    عرض جميع التسجيلات
+                    {t('showAllRecordings')}
                   </Link>
                 ) : undefined
               }
@@ -436,11 +409,11 @@ export default async function AdminRecordingsPage({
               const mimeType    = recordingMimeType(rec.localPath);
 
               // Inline helpers for this page's date formatting
-              const dateStr = new Intl.DateTimeFormat("ar-EG", { timeZone: "Africa/Cairo", weekday: "long", year: "numeric", month: "long", day: "numeric" }).format(rec.startedAt);
-              const timeStr = new Intl.DateTimeFormat("ar-EG", { timeZone: "Africa/Cairo", hour: "numeric", minute: "2-digit" }).format(rec.startedAt);
-              const endStr  = rec.endedAt ? new Intl.DateTimeFormat("ar-EG", { timeZone: "Africa/Cairo", hour: "numeric", minute: "2-digit" }).format(rec.endedAt) : null;
-              const dur     = rec.durationSeconds != null ? (() => { const m = Math.floor(rec.durationSeconds! / 60); const s = rec.durationSeconds! % 60; return m === 0 ? `${s} ث` : s === 0 ? `${m} د` : `${m} د ${s} ث`; })() : null;
-              const size    = rec.bytesReceived != null ? (() => { const b = rec.bytesReceived!; return b < 1024 ? `${b} بايت` : b < 1024*1024 ? `${(b/1024).toFixed(1)} كيلوبايت` : `${(b/(1024*1024)).toFixed(1)} ميغابايت`; })() : null;
+              const dateStr = new Intl.DateTimeFormat(locale, { timeZone: "Africa/Cairo", weekday: "long", year: "numeric", month: "long", day: "numeric" }).format(rec.startedAt);
+              const timeStr = new Intl.DateTimeFormat(locale, { timeZone: "Africa/Cairo", hour: "numeric", minute: "2-digit" }).format(rec.startedAt);
+              const endStr  = rec.endedAt ? new Intl.DateTimeFormat(locale, { timeZone: "Africa/Cairo", hour: "numeric", minute: "2-digit" }).format(rec.endedAt) : null;
+              const dur     = rec.durationSeconds != null ? (() => { const m = Math.floor(rec.durationSeconds! / 60); const s = rec.durationSeconds! % 60; return m === 0 ? `${s} ${t('seconds')}` : s === 0 ? `${m} ${t('minutes')}` : `${m} ${t('minutes')} ${s} ${t('seconds')}`; })() : null;
+              const size    = rec.bytesReceived != null ? (() => { const b = rec.bytesReceived!; return b < 1024 ? `${b} ${t('bytes')}` : b < 1024*1024 ? `${(b/1024).toFixed(1)} ${t('kilobytes')}` : `${(b/(1024*1024)).toFixed(1)} ${t('megabytes')}`; })() : null;
 
               return (
                 <article
@@ -481,7 +454,7 @@ export default async function AdminRecordingsPage({
                           <span className="text-sm font-medium text-neutral-200 truncate">
                             {rec.presenter?.name ?? rec.presenter?.username ?? rec.presenterNameSnapshot ?? rec.presenterUsernameSnapshot ?? "—"}
                             {rec.presenterDeleted && (
-                              <StatusBadge label="محذوف" variant="danger" className="mr-1.5 align-middle" />
+                              <StatusBadge label={t('deleted')} variant="danger" className="mr-1.5 align-middle" />
                             )}
                           </span>
                           <span className="text-xs text-neutral-500 font-mono hidden sm:inline">
@@ -499,7 +472,7 @@ export default async function AdminRecordingsPage({
                             <span className="text-xs font-medium text-teal-300">
                               {rec.stationNameSnapshot}
                               {rec.stationDeleted && (
-                                <StatusBadge label="محذوفة" variant="danger" className="mr-1.5 align-middle" />
+                                <StatusBadge label={t('deletedFeminine')} variant="danger" className="mr-1.5 align-middle" />
                               )}
                             </span>
                           </div>
@@ -512,7 +485,7 @@ export default async function AdminRecordingsPage({
                               <circle cx="12" cy="12" r="2" />
                               <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14" />
                             </svg>
-                            <span className="text-xs font-medium" style={{ color: "var(--eg-accent)" }}>مباشر DJ</span>
+                            <span className="text-xs font-medium" style={{ color: "var(--eg-accent)" }}>{t('directDj')}</span>
                           </div>
                         )}
 
@@ -575,7 +548,7 @@ export default async function AdminRecordingsPage({
                         style={{ colorScheme: "dark" }}
                       >
                         <source src={playUrl} type={mimeType} />
-                        متصفحك لا يدعم تشغيل الصوت.
+                        {t('browserNoAudio')}
                       </audio>
                     </div>
 
@@ -601,7 +574,7 @@ export default async function AdminRecordingsPage({
                           <polyline points="7 10 12 15 17 10" />
                           <line x1="12" y1="15" x2="12" y2="3" />
                         </svg>
-                        تحميل
+                        {tc('download')}
                       </a>
                       <a
                         href={playUrl}
@@ -623,7 +596,7 @@ export default async function AdminRecordingsPage({
                           <polyline points="15 3 21 3 21 9" />
                           <line x1="10" y1="14" x2="21" y2="3" />
                         </svg>
-                        فتح في نافذة جديدة
+                        {t('openInNewWindow')}
                       </a>
 
                       {/* Quick filter link — only shown when not already filtered */}
@@ -646,7 +619,7 @@ export default async function AdminRecordingsPage({
                             <line x1="8" y1="12" x2="16" y2="12" />
                             <line x1="11" y1="18" x2="13" y2="18" />
                           </svg>
-                          تسجيلاته فقط
+                          {t('presenterRecordingsOnly')}
                         </Link>
                       )}
 

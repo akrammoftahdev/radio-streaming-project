@@ -1,10 +1,12 @@
+"use client";
+
 /**
  * AdminPageShell
  * ─────────────────────────────────────────────────────────────────────────────
  * Shared presentational page wrapper for Admin pages.
  *
  * Encapsulates the repeated pattern found across all admin pages:
- *   <div dir="rtl" className="min-h-screen bg-[dark] text-[light] p-8">
+ *   <div dir="{rtl|ltr}" className="min-h-screen bg-[dark] text-[light] p-8">
  *     <div className="max-w-5xl mx-auto space-y-8">
  *       <header>...</header>
  *       {children}
@@ -19,6 +21,9 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { useLocale } from 'next-intl';
+import { isRtl } from '@/i18n/config';
+import LanguageSwitcher from '@/components/ui/LanguageSwitcher';
 
 export interface AdminPageShellProps {
   /** Main page content */
@@ -36,7 +41,7 @@ export interface AdminPageShellProps {
   /** Optional: back navigation href (e.g. "/admin") */
   backHref?: string;
 
-  /** Optional: back navigation label (default: "← لوحة الإدارة") */
+  /** Optional: back navigation label — callers should pass a translated label */
   backLabel?: string;
 
   /** Optional: max-width class override (default: "max-w-5xl") */
@@ -44,6 +49,9 @@ export interface AdminPageShellProps {
 
   /** Optional: inner padding class override (default: "p-6 sm:p-8") */
   padding?: string;
+
+  /** Optional: text direction override (default: "rtl") */
+  dir?: "rtl" | "ltr";
 }
 
 export function AdminPageShell({
@@ -52,21 +60,24 @@ export function AdminPageShell({
   description,
   actions,
   backHref,
-  backLabel = "← لوحة الإدارة",
+  backLabel = "← Back",
   maxWidth = "max-w-5xl",
   padding = "p-6 sm:p-8",
+  dir: dirProp,
 }: AdminPageShellProps) {
+  const locale = useLocale();
+  const dir = dirProp ?? (isRtl(locale) ? 'rtl' : 'ltr');
   const hasHeader = !!(title || description || actions || backHref);
 
   return (
     <div
-      dir="rtl"
+      dir={dir}
       className="min-h-screen text-slate-100 font-sans"
       style={{ background: "var(--eg-bg)", color: "var(--eg-text)" }}
     >
       <div className={`${maxWidth} mx-auto ${padding} space-y-8`}>
 
-        {hasHeader && (
+        {hasHeader ? (
           <header className="flex items-start justify-between gap-4">
             <div>
               {/* Back navigation */}
@@ -96,12 +107,15 @@ export function AdminPageShell({
             </div>
 
             {/* Actions slot */}
-            {actions && (
-              <div className="flex items-center gap-2 flex-shrink-0 mt-1">
-                {actions}
-              </div>
-            )}
+            <div className="flex items-center gap-2 flex-shrink-0 mt-1">
+              <LanguageSwitcher />
+              {actions}
+            </div>
           </header>
+        ) : (
+          <div className="flex justify-end mb-4">
+            <LanguageSwitcher />
+          </div>
         )}
 
         {/* Page content */}

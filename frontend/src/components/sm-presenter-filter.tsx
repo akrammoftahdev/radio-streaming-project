@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 
 type Presenter = { id: string; name: string | null; username: string };
 
@@ -12,6 +13,7 @@ export function SMPresenterFilter({
   presenters: Presenter[];
   paramKey?: string;
 }) {
+  const t = useTranslations("stationManager.presenterFilter");
   const router = useRouter();
   const sp = useSearchParams();
   const current = sp.get(paramKey) ?? "";
@@ -69,7 +71,7 @@ export function SMPresenterFilter({
           <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
         </svg>
         <span className="truncate max-w-[120px]">
-          {selected ? (selected.name || selected.username) : "المذيع"}
+          {selected ? (selected.name || selected.username) : t("presenter")}
         </span>
         <svg xmlns="http://www.w3.org/2000/svg" className={`w-3.5 h-3.5 flex-shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="6 9 12 15 18 9"/>
@@ -83,7 +85,7 @@ export function SMPresenterFilter({
               <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
               </svg>
-              <input ref={inputRef} type="text" placeholder="بحث..." value={search}
+              <input ref={inputRef} type="text" placeholder={t("search")} value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="flex-1 bg-transparent border-none outline-none text-sm text-slate-200 placeholder-slate-600 text-right" dir="rtl"/>
             </div>
@@ -97,11 +99,11 @@ export function SMPresenterFilter({
                   <div className={`flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center ${!current ? "bg-indigo-600 border-indigo-500" : "border-slate-600 bg-slate-800"}`}>
                     {!current && <svg xmlns="http://www.w3.org/2000/svg" className="w-2.5 h-2.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
                   </div>
-                  <span className="font-medium">الكل</span>
+                  <span className="font-medium">{t("all")}</span>
                 </button>
               )}
               {filtered.length === 0
-                ? <div className="p-3 text-sm text-slate-500 text-center">لا توجد نتائج</div>
+                ? <div className="p-3 text-sm text-slate-500 text-center">{t("noResults")}</div>
                 : filtered.map(p => {
                     const isSel = current === p.id;
                     return (
@@ -128,7 +130,7 @@ export function SMPresenterFilter({
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                 </svg>
-                إلغاء تصفية المذيع
+                {t("clearFilter")}
               </button>
             </div>
           )}

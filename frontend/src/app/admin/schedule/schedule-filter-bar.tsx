@@ -2,19 +2,14 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations, useLocale } from "next-intl";
+import { DATE_LOCALES } from "@/i18n/config";
+import type { Locale } from "@/i18n/config";
 import { MultiSmartSelect }   from "@/components/ui/MultiSmartSelect";
 import { SegmentedFilter }    from "@/components/ui/SegmentedFilter";
 import { ClearFiltersButton } from "@/components/ui/ClearFiltersButton";
 
 type Item = { id: string; name: string };
-
-const RECURRENCE_OPTIONS = [
-  { value: "all",           label: "الكل"        },
-  { value: "DAILY",         label: "يومي"        },
-  { value: "WEEKLY",        label: "أسبوعي"      },
-  { value: "SELECTED_DAYS", label: "أيام مختارة" },
-  { value: "ONE_TIME",      label: "مرة واحدة"   },
-];
 
 export function ScheduleFilterBar({
   allStations, allPresenters, initialStationIds, initialPresenterIds, initialRecurrence,
@@ -27,6 +22,17 @@ export function ScheduleFilterBar({
 }) {
   const router = useRouter();
   const sp     = useSearchParams();
+  const t = useTranslations('admin.schedule');
+  const locale = useLocale();
+  const dateLocale = DATE_LOCALES[locale as Locale] || locale;
+
+  const RECURRENCE_OPTIONS = [
+    { value: "all",           label: t('recurrenceAll')          },
+    { value: "DAILY",         label: t('recurrenceDaily')        },
+    { value: "WEEKLY",        label: t('recurrenceWeekly')       },
+    { value: "SELECTED_DAYS", label: t('recurrenceSelectedDays') },
+    { value: "ONE_TIME",      label: t('recurrenceOneTime')      },
+  ];
 
   // ── Local state for time range (debounced push) ────────────────────────────
   const timeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -73,15 +79,15 @@ export function ScheduleFilterBar({
   const toLocalISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const prevWkStr  = toLocalISO(prevWkDate);
   const nextWkStr  = toLocalISO(nextWkDate);
-  const fmtDate    = (d: Date) => d.toLocaleDateString("ar-EG", { weekday: "short", month: "short", day: "numeric" });
+  const fmtDate    = (d: Date) => d.toLocaleDateString(dateLocale, { weekday: "short", month: "short", day: "numeric" });
 
   // ── Time range ────────────────────────────────────────────────────────────
   const TIME_PRESETS = [
-    { label: "الكل",      from: "",      to: ""      },
-    { label: "الليل",     from: "00:00", to: "06:00" },
-    { label: "الصباح",    from: "06:00", to: "12:00" },
-    { label: "الظهيرة",   from: "12:00", to: "18:00" },
-    { label: "المساء",    from: "18:00", to: "24:00" },
+    { label: t('timeAll'),       from: "",      to: ""      },
+    { label: t('timeNight'),     from: "00:00", to: "06:00" },
+    { label: t('timeMorning'),   from: "06:00", to: "12:00" },
+    { label: t('timeAfternoon'), from: "12:00", to: "18:00" },
+    { label: t('timeEvening'),   from: "18:00", to: "24:00" },
   ];
 
   const activePreset = TIME_PRESETS.find(p => p.from === initialTimeFrom && p.to === initialTimeTo);
@@ -101,7 +107,7 @@ export function ScheduleFilterBar({
         <button type="button" onClick={() => push(buildUrl({ weekOf: prevWkStr }))}
           className="flex items-center gap-2 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-600 border border-neutral-700 hover:border-neutral-500 text-neutral-300 hover:text-neutral-100 text-sm font-medium rounded-xl transition-all select-none">
           <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-          <span>السابق</span>
+          <span>{t('previousWeek')}</span>
         </button>
 
         {/* Center: date range + picker + today */}
@@ -131,7 +137,7 @@ export function ScheduleFilterBar({
           {!isCurrentWeek && (
             <button type="button" onClick={() => push(buildUrl({ weekOf: "" }))}
               className="px-3 py-2 bg-violet-600/20 hover:bg-violet-600/30 border border-violet-600/40 hover:border-violet-500/60 text-violet-300 text-xs font-medium rounded-xl transition-all whitespace-nowrap select-none">
-              اليوم
+              {t('todayBtn')}
             </button>
           )}
         </div>
@@ -139,7 +145,7 @@ export function ScheduleFilterBar({
         {/* Next week */}
         <button type="button" onClick={() => push(buildUrl({ weekOf: nextWkStr }))}
           className="flex items-center gap-2 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-600 border border-neutral-700 hover:border-neutral-500 text-neutral-300 hover:text-neutral-100 text-sm font-medium rounded-xl transition-all select-none">
-          <span>التالي</span>
+          <span>{t('nextWeek')}</span>
           <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
 
@@ -153,7 +159,7 @@ export function ScheduleFilterBar({
           options={allStations.map(s => ({ value: s.id, label: s.name }))}
           values={initialStationIds}
           onChange={applyStations}
-          placeholder="المحطات"
+          placeholder={t('stationsPlaceholder')}
         />
 
         {/* Presenter multi-select — entity selector */}
@@ -161,7 +167,7 @@ export function ScheduleFilterBar({
           options={allPresenters.map(p => ({ value: p.id, label: p.name }))}
           values={initialPresenterIds}
           onChange={applyPresenters}
-          placeholder="المذيعون"
+          placeholder={t('presentersPlaceholder')}
         />
 
         {/* Recurrence — fixed values, mutually exclusive → SegmentedFilter */}
@@ -207,7 +213,7 @@ export function ScheduleFilterBar({
 
         {/* Clear all */}
         {hasFilters && (
-          <ClearFiltersButton onClick={clearAll} label="مسح الكل" />
+          <ClearFiltersButton onClick={clearAll} label={t('clearAll')} />
         )}
 
       </div>

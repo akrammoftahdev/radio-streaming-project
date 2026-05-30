@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { useTranslations } from "next-intl";
 
 interface AvatarUploadProps {
   currentAvatarUrl?: string | null;
@@ -23,6 +24,7 @@ function toDisplayUrl(url: string | null | undefined): string | null {
 }
 
 export default function AvatarUpload({ currentAvatarUrl, initials }: AvatarUploadProps) {
+  const t = useTranslations("profile.avatarUpload");
   const [preview,  setPreview]  = useState<string | null>(toDisplayUrl(currentAvatarUrl));
   const [progress, setProgress] = useState<number>(0);
   const [status,   setStatus]   = useState<"idle" | "uploading" | "success" | "error">("idle");
@@ -36,7 +38,7 @@ export default function AvatarUpload({ currentAvatarUrl, initials }: AvatarUploa
     // ── Client-side size guard ──────────────────────────────────────────────
     if (file.size > MAX_BYTES) {
       setStatus("error");
-      setMessage(`حجم الصورة (${(file.size / 1024 / 1024).toFixed(1)} MB) يتجاوز الحد المسموح (5 MB).`);
+      setMessage(t("fileTooLarge", { size: (file.size / 1024 / 1024).toFixed(1) }));
       if (inputRef.current) inputRef.current.value = "";
       return;
     }
@@ -73,18 +75,18 @@ export default function AvatarUpload({ currentAvatarUrl, initials }: AvatarUploa
             URL.revokeObjectURL(localUrl);
             setPreview((toDisplayUrl(res.avatarUrl) ?? res.avatarUrl) + "?t=" + Date.now());
             setStatus("success");
-            setMessage("تم تحديث صورة الحساب بنجاح ✅");
+            setMessage(t("uploadSuccess"));
           } else {
             URL.revokeObjectURL(localUrl);
             setPreview(currentAvatarUrl ?? null);
             setStatus("error");
-            setMessage(res.error ?? `خطأ في الرفع (${xhr.status})`);
+            setMessage(res.error ?? t("uploadErrorPrefix", { status: xhr.status }));
           }
         } catch {
           URL.revokeObjectURL(localUrl);
           setPreview(currentAvatarUrl ?? null);
           setStatus("error");
-          setMessage("استجابة غير متوقعة من الخادم.");
+          setMessage(t("unexpectedResponse"));
         }
         if (inputRef.current) inputRef.current.value = "";
         resolve();
@@ -94,7 +96,7 @@ export default function AvatarUpload({ currentAvatarUrl, initials }: AvatarUploa
         URL.revokeObjectURL(localUrl);
         setPreview(currentAvatarUrl ?? null);
         setStatus("error");
-        setMessage("فشل الاتصال بالخادم.");
+        setMessage(t("connectionFailed"));
         if (inputRef.current) inputRef.current.value = "";
         resolve();
       };
@@ -112,7 +114,7 @@ export default function AvatarUpload({ currentAvatarUrl, initials }: AvatarUploa
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={preview}
-              alt="معاينة الصورة"
+              alt={t("preview")}
               className="w-16 h-16 rounded-full object-cover border-2 border-neutral-700"
             />
           ) : (
@@ -123,9 +125,9 @@ export default function AvatarUpload({ currentAvatarUrl, initials }: AvatarUploa
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm text-neutral-400 mb-0.5">
-            {preview ? "تغيير صورة الحساب" : "رفع صورة للحساب"}
+            {preview ? t("changeAvatar") : t("uploadAvatar")}
           </p>
-          <p className="text-xs text-neutral-600">JPEG · PNG · WebP · حتى 5 MB</p>
+          <p className="text-xs text-neutral-600">{t("sizeHint")}</p>
         </div>
       </div>
 
@@ -141,7 +143,7 @@ export default function AvatarUpload({ currentAvatarUrl, initials }: AvatarUploa
         {status === "uploading" ? (
           <>
             <span className="w-4 h-4 border-2 border-indigo-500/40 border-t-indigo-400 rounded-full animate-spin inline-block" />
-            جارٍ الرفع...
+            {t("uploading")}
           </>
         ) : (
           <>
@@ -150,7 +152,7 @@ export default function AvatarUpload({ currentAvatarUrl, initials }: AvatarUploa
               <polyline points="17 8 12 3 7 8"/>
               <line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
-            اختر صورة للرفع
+            {t("chooseImage")}
           </>
         )}
       </label>

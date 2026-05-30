@@ -8,15 +8,14 @@ import { AdminProgramsFilter } from "./programs-filter";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AdminPageShell } from "@/components/ui";
+import { getTranslations } from "next-intl/server";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "إدارة البرامج - EGONAIR" };
 
-const DAY_NAMES = ["الأحد","الاثنين","الثلاثاء","الأربعاء","الخميس","الجمعة","السبت"];
-
-const RECURRENCE_LABELS: Record<string, string> = {
-  DAILY: "يومي", WEEKLY: "أسبوعي", SELECTED_DAYS: "أيام محددة", ONE_TIME: "حلقة واحدة",
-};
+export async function generateMetadata() {
+  const t = await getTranslations('admin.programs');
+  return { title: `${t('title')} - EGONAIR` };
+}
 
 export default async function ProgramsPage({
   searchParams,
@@ -34,6 +33,11 @@ export default async function ProgramsPage({
 }) {
   const session = await auth();
   if (!session || (session.user as any).role !== "ADMIN") redirect("/login");
+
+  const t = await getTranslations('admin.programs');
+  const tc = await getTranslations('common');
+  const tn = await getTranslations('nav');
+  const ts = await getTranslations('admin.schedule');
 
   const {
     stationIds: stationIdsParam,
@@ -153,10 +157,10 @@ export default async function ProgramsPage({
     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-neutral-900 border border-neutral-800 rounded-2xl p-4 my-6 gap-4">
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
         <div className="text-sm text-neutral-400">
-          صفحة <span className="text-neutral-200 font-medium">{page}</span> من <span className="text-neutral-200 font-medium">{totalPages}</span>
+          {t('page')} <span className="text-neutral-200 font-medium">{page}</span> {t('of')} <span className="text-neutral-200 font-medium">{totalPages}</span>
         </div>
         <div className="text-xs text-neutral-500">
-          (عرض {programs.length > 0 ? finalSkip + 1 : 0}–{finalSkip + programs.length} من أصل {totalCount} برنامج)
+          ({t('showing')} {programs.length > 0 ? finalSkip + 1 : 0}–{finalSkip + programs.length} {t('outOf')} {totalCount} {t('programUnit')})
         </div>
       </div>
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 flex-wrap">
@@ -166,23 +170,23 @@ export default async function ProgramsPage({
           {statusParam && statusParam !== "all" && <input type="hidden" name="status" value={statusParam} />}
           {sortParam && sortParam !== "newest" && <input type="hidden" name="sort" value={sortParam} />}
           {hasScheduleParam && hasScheduleParam !== "all" && <input type="hidden" name="hasSchedule" value={hasScheduleParam} />}
-          <label htmlFor="pageSize" className="text-xs font-medium text-neutral-400 mr-1">عدد النتائج:</label>
+          <label htmlFor="pageSize" className="text-xs font-medium text-neutral-400 mr-1">{t('resultsCount')}:</label>
           <select id="pageSize" name="pageSize" defaultValue={finalPageSize}
             className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-md px-2 py-1 outline-none transition-colors">
             {[20, 40, 60, 80, 100].map(n => <option key={n} value={n}>{n}</option>)}
           </select>
           <button type="submit" className="px-2 py-1 text-white text-xs font-medium rounded-md transition-colors mr-1 border"
             style={{ background: "var(--eg-primary)", borderColor: "var(--eg-primary)" }}
-          >تطبيق</button>
+          >{tc('apply')}</button>
         </form>
         <div className="flex items-center gap-2">
           {page > 1
-            ? <Link href={buildUrl(page - 1)} className="px-4 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-medium rounded-lg border border-neutral-700 transition-colors">السابق</Link>
-            : <span className="px-4 py-1.5 bg-neutral-800/30 text-neutral-600 text-xs font-medium rounded-lg border border-neutral-800/50 cursor-not-allowed">السابق</span>
+            ? <Link href={buildUrl(page - 1)} className="px-4 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-medium rounded-lg border border-neutral-700 transition-colors">{t('previous')}</Link>
+            : <span className="px-4 py-1.5 bg-neutral-800/30 text-neutral-600 text-xs font-medium rounded-lg border border-neutral-800/50 cursor-not-allowed">{t('previous')}</span>
           }
           {page < totalPages
-            ? <Link href={buildUrl(page + 1)} className="px-4 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-medium rounded-lg border border-neutral-700 transition-colors">التالي</Link>
-            : <span className="px-4 py-1.5 bg-neutral-800/30 text-neutral-600 text-xs font-medium rounded-lg border border-neutral-800/50 cursor-not-allowed">التالي</span>
+            ? <Link href={buildUrl(page + 1)} className="px-4 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-medium rounded-lg border border-neutral-700 transition-colors">{t('next')}</Link>
+            : <span className="px-4 py-1.5 bg-neutral-800/30 text-neutral-600 text-xs font-medium rounded-lg border border-neutral-800/50 cursor-not-allowed">{t('next')}</span>
           }
         </div>
       </div>
@@ -196,17 +200,17 @@ export default async function ProgramsPage({
         {/* Header */}
         <div>
           <div className="flex items-center gap-2 mb-1 text-sm">
-            <Link href="/admin" className="text-slate-500 hover:text-slate-300 transition-colors">لوحة الإدارة</Link>
+            <Link href="/admin" className="text-slate-500 hover:text-slate-300 transition-colors">{tn('adminDashboard')}</Link>
             <span className="text-slate-700">/</span>
-            <span className="text-slate-300">البرامج</span>
+            <span className="text-slate-300">{tn('programs')}</span>
           </div>
           <h1
             className="text-3xl font-bold bg-clip-text text-transparent"
             style={{ backgroundImage: "linear-gradient(to left, var(--eg-primary), var(--eg-accent))" }}
           >
-            إدارة البرامج
+            {t('title')}
           </h1>
-          <p className="text-slate-400 text-sm mt-1">إنشاء برامج المذيعين وإدارة جداول بثها</p>
+          <p className="text-slate-400 text-sm mt-1">{t('subtitle')}</p>
         </div>
 
         {/* Filter component */}
@@ -231,7 +235,7 @@ export default async function ProgramsPage({
         {/* Programs list */}
         <section>
           <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-widest mb-4">
-            البرامج المسجّلة ({totalCount})
+            {t('registeredPrograms')} ({totalCount})
           </h2>
 
           {programs.length > 0 && renderPagination()}
@@ -242,13 +246,13 @@ export default async function ProgramsPage({
                 icon="📋"
                 title={
                   (q || filterStationIds.length > 0 || (statusParam && statusParam !== "all") || (hasScheduleParam && hasScheduleParam !== "all"))
-                    ? "لا توجد برامج تطابق بحثك"
-                    : "لا توجد برامج بعد"
+                    ? t('noProgramsMatchSearch')
+                    : t('noPrograms')
                 }
                 description={
                   (q || filterStationIds.length > 0 || (statusParam && statusParam !== "all") || (hasScheduleParam && hasScheduleParam !== "all"))
-                    ? "جرب تعديل الفلاتر أو مسحها."
-                    : "أضف أول برنامج أعلاه."
+                    ? t('tryModifyFilters')
+                    : t('addFirstProgram')
                 }
               />
             </div>
@@ -258,12 +262,12 @@ export default async function ProgramsPage({
                 <table className="w-full text-right text-sm border-collapse">
                   <thead>
                     <tr className="bg-slate-900/60 border-b border-slate-700">
-                      <th className="px-5 py-3.5 font-semibold text-slate-400">البرنامج</th>
-                      <th className="px-5 py-3.5 font-semibold text-slate-400">المذيع</th>
-                      <th className="px-5 py-3.5 font-semibold text-slate-400">المحطة</th>
-                      <th className="px-5 py-3.5 font-semibold text-slate-400">الجداول</th>
-                      <th className="px-5 py-3.5 font-semibold text-slate-400">الحالة</th>
-                      <th className="px-5 py-3.5 font-semibold text-slate-400 text-left">إجراءات</th>
+                      <th className="px-5 py-3.5 font-semibold text-slate-400">{t('programTitle')}</th>
+                      <th className="px-5 py-3.5 font-semibold text-slate-400">{t('presenter')}</th>
+                      <th className="px-5 py-3.5 font-semibold text-slate-400">{t('station')}</th>
+                      <th className="px-5 py-3.5 font-semibold text-slate-400">{t('schedules')}</th>
+                      <th className="px-5 py-3.5 font-semibold text-slate-400">{tc('status')}</th>
+                      <th className="px-5 py-3.5 font-semibold text-slate-400 text-left">{tc('actions')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-700/50">
@@ -283,7 +287,7 @@ export default async function ProgramsPage({
                         <td className="px-5 py-4 text-center text-slate-400">{prog._count.scheduleRules}</td>
                         <td className="px-5 py-4">
                           <StatusBadge
-                            label={prog.isActive ? "نشط" : "موقوف"}
+                            label={prog.isActive ? tc('active') : t('suspended')}
                             variant={prog.isActive ? "success" : "neutral"}
                             dot
                           />
@@ -293,14 +297,14 @@ export default async function ProgramsPage({
                             <Link href={`/admin/programs/${prog.id}/edit`}
                               className="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors border"
                               style={{ color: "var(--eg-primary)", background: "color-mix(in srgb, var(--eg-primary) 10%, transparent)", borderColor: "color-mix(in srgb, var(--eg-primary) 20%, transparent)" }}>
-                              تعديل
+                              {tc('edit')}
                             </Link>
                             <form action={toggleProgramActive}>
                               <input type="hidden" name="programId"      value={prog.id} />
                               <input type="hidden" name="currentIsActive" value={String(prog.isActive)} />
                               <button type="submit"
                                 className={`px-3 py-1.5 text-xs font-medium border rounded-lg transition-colors ${prog.isActive ? "text-red-400 bg-red-500/10 border-red-500/20 hover:bg-red-500/20" : "text-emerald-400 bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/20"}`}>
-                                {prog.isActive ? "إيقاف" : "تفعيل"}
+                                {prog.isActive ? tc('stop') : t('activate')}
                               </button>
                             </form>
                             <ProgramDeleteButton

@@ -5,13 +5,12 @@ import { signOut } from "@/auth";
 import { Unauthorized } from "@/components/ui/Unauthorized";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { EmptyState }  from "@/components/ui/EmptyState";
+import { getTranslations, getLocale } from "next-intl/server";
+import { isRtl } from "@/i18n/config";
+import LanguageSwitcher from "@/components/ui/LanguageSwitcher";
 
 // Force dynamic so counts and DJ status are always fresh.
 export const dynamic = "force-dynamic";
-
-export const metadata = {
-  title: "لوحة مدير المحطة - EGONAIR",
-};
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -84,8 +83,14 @@ export default async function StationManagerDashboard() {
     return <Unauthorized role={role ?? ""} />;
   }
 
+  const t = await getTranslations("stationManager.dashboard");
+  const tCommon = await getTranslations("common");
+  const tAuth = await getTranslations("auth");
+  const locale = await getLocale();
+  const dir = isRtl(locale) ? "rtl" : "ltr";
+
   const managerId  = (session.user as any)?.id   as string;
-  const managerName = session.user.name ?? session.user.email ?? "مدير المحطة";
+  const managerName = session.user.name ?? session.user.email ?? t("defaultRole");
 
   let stations: StationCard[] = [];
   let fetchError = false;
@@ -102,13 +107,11 @@ export default async function StationManagerDashboard() {
 
   return (
     <div
-      dir="rtl"
+      dir={dir}
       className="min-h-screen bg-slate-950 text-slate-100"
-      style={{ fontFamily: "'Cairo','Segoe UI',system-ui,sans-serif" }}
     >
       <link
         rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap"
       />
 
       {/* ── Header ── */}
@@ -123,7 +126,7 @@ export default async function StationManagerDashboard() {
             </div>
             <div>
               <h1 className="text-base font-bold text-slate-100 leading-tight">
-                لوحة مدير المحطة
+                {t("title")}
               </h1>
               <p className="text-xs text-slate-500">EGONAIR</p>
             </div>
@@ -131,9 +134,10 @@ export default async function StationManagerDashboard() {
 
           <div className="flex items-center gap-2">
             <div className="hidden sm:block text-right">
-              <p className="text-xs text-slate-500">مرحباً،</p>
+              <p className="text-xs text-slate-500">{t("greeting")}</p>
               <p className="text-sm font-semibold max-w-[160px] truncate" style={{ color: "var(--eg-primary)" }}>{managerName}</p>
             </div>
+            <LanguageSwitcher />
             <Link
               href="/profile"
               className="flex items-center gap-1.5 text-xs text-slate-400 border border-slate-700 rounded-lg px-3 py-2 transition-colors"
@@ -143,7 +147,7 @@ export default async function StationManagerDashboard() {
               <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
               </svg>
-              ملفي
+              {t("myProfile")}
             </Link>
             <form
               action={async () => {
@@ -158,7 +162,7 @@ export default async function StationManagerDashboard() {
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                   <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
                 </svg>
-                خروج
+                {tAuth("logout")}
               </button>
             </form>
           </div>
@@ -173,27 +177,27 @@ export default async function StationManagerDashboard() {
           style={{ background: "linear-gradient(to bottom right, color-mix(in srgb, var(--eg-primary) 15%, transparent), color-mix(in srgb, var(--eg-accent) 10%, transparent))", borderColor: "color-mix(in srgb, var(--eg-primary) 20%, transparent)" }}
         >
           <h2 className="text-xl font-bold text-slate-100 mb-1">
-            مرحباً، {managerName} 👋
+            {t("welcome", { name: managerName })}
           </h2>
           <p className="text-sm text-slate-400">
-            تعرض هذه اللوحة المحطات المسندة إليك فقط. لا يمكنك الوصول إلى بيانات المحطات الأخرى أو لوحة الإدارة العامة.
+            {t("welcomeDescription")}
           </p>
         </div>
 
         {/* ── Summary stat row (only when stations exist) ── */}
         {!fetchError && stations.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <SummaryCard icon="📡" label="المحطات المُسندة"    value={stations.length}   color="teal"   />
-            <SummaryCard icon="🎙️" label="إجمالي المذيعين"    value={totalPresenters}   color="indigo" />
-            <SummaryCard icon="📺" label="إجمالي البرامج"     value={totalPrograms}     color="purple" />
-            <SummaryCard icon="🗂️" label="إجمالي التسجيلات"  value={totalRecordings}   color="amber"  />
+            <SummaryCard icon="📡" label={t("assignedStations")}   value={stations.length}   color="teal"   />
+            <SummaryCard icon="🎙️" label={t("totalPresenters")}   value={totalPresenters}   color="indigo" />
+            <SummaryCard icon="📺" label={t("totalPrograms")}      value={totalPrograms}     color="purple" />
+            <SummaryCard icon="🗂️" label={t("totalRecordings")}   value={totalRecordings}   color="amber"  />
           </div>
         )}
 
         {/* ── Error state ── */}
         {fetchError && (
           <div className="bg-red-950/40 border border-red-500/30 rounded-2xl p-8 text-center text-red-400 text-sm">
-            حدث خطأ أثناء تحميل البيانات. حاول تحديث الصفحة.
+            {t("fetchError")}
           </div>
         )}
 
@@ -202,12 +206,12 @@ export default async function StationManagerDashboard() {
           <div className="bg-slate-900 border border-slate-700/50 rounded-2xl overflow-hidden">
             <EmptyState
               icon="📭"
-              title="لا توجد محطات مسندة لهذا الحساب"
-              description="تواصل مع الإدارة لتفعيل المحطات المرتبطة بحسابك."
+              title={t("noStationsTitle")}
+              description={t("noStationsDescription")}
               action={
                 <form action={async () => { "use server"; await signOut({ redirectTo: "/login" }); }}>
                   <button type="submit" className="text-sm text-slate-400 hover:text-red-400 border border-slate-700 hover:border-red-500/30 rounded-lg px-4 py-2 transition-colors">
-                    تسجيل الخروج
+                    {tAuth("logout")}
                   </button>
                 </form>
               }
@@ -220,11 +224,11 @@ export default async function StationManagerDashboard() {
           <>
             <div>
               <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-widest mb-4">
-                محطاتك المُسندة
+                {t("yourStations")}
               </h3>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {stations.map((st) => (
-                  <StationCard key={st.id} station={st} />
+                  <StationCardComponent key={st.id} station={st} t={t} />
                 ))}
               </div>
             </div>
@@ -262,7 +266,7 @@ function SummaryCard({
 
 // ── Station card ──────────────────────────────────────────────────────────────
 
-function StationCard({ station: s }: { station: StationCard }) {
+function StationCardComponent({ station: s, t }: { station: StationCard; t: any }) {
   const streamInfo = s.streamHost
     ? `${s.streamHost}${s.streamPort ? `:${s.streamPort}` : ""}`
     : null;
@@ -285,7 +289,7 @@ function StationCard({ station: s }: { station: StationCard }) {
           </div>
         </div>
         <StatusBadge
-          label={s.isActive ? "نشطة" : "معطّلة"}
+          label={s.isActive ? t("stationActive") : t("stationInactive")}
           variant={s.isActive ? "success" : "neutral"}
           dot
           className="flex-shrink-0"
@@ -317,8 +321,8 @@ function StationCard({ station: s }: { station: StationCard }) {
         <StatusBadge
           label={
             s.hasDjCredential
-              ? "بيانات DJ الافتراضية مُعدة"
-              : "بيانات DJ الافتراضية غير مُعدة"
+              ? t("djCredentialsReady")
+              : t("djCredentialsNotReady")
           }
           variant={s.hasDjCredential ? "success" : "warning"}
           dot
@@ -327,21 +331,21 @@ function StationCard({ station: s }: { station: StationCard }) {
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
-        <StatBadge icon="🎙️" label="المذيعون"   value={s.presentersCount}  color="indigo" />
-        <StatBadge icon="📺" label="البرامج"    value={s.programsCount}    color="purple" />
-        <StatBadge icon="🗂️" label="التسجيلات" value={s.recordingsCount}  color="amber"  />
+        <StatBadge icon="🎙️" label={t("presentersStat")}  value={s.presentersCount}  color="indigo" />
+        <StatBadge icon="📺" label={t("programsStat")}     value={s.programsCount}    color="purple" />
+        <StatBadge icon="🗂️" label={t("recordingsStat")}  value={s.recordingsCount}  color="amber"  />
       </div>
 
       {/* Action cards */}
       <div>
-        <p className="text-xs text-slate-600 mb-2 font-medium">الإجراءات</p>
+        <p className="text-xs text-slate-600 mb-2 font-medium">{t("actions")}</p>
         <div className="grid grid-cols-2 gap-2">
-          <ActionLink href="/station-manager/presenters" icon="🎙️" label="مذيعو المحطة" />
-          <ActionLink href="/station-manager/programs"   icon="📺" label="برامج المحطة" />
-          <ActionLink href="/station-manager/recordings" icon="🗂️" label="تسجيلات المحطة" />
-          <ActionLink href="/station-manager/dj-settings" icon="⚙️" label="إعدادات DJ" />
-          <ActionLink href="/station-manager/media"      icon="🎵" label="مكتبة الوسائط" />
-          <ActionLink href="/station-manager/schedule"   icon="📅" label="جدول المحطة" />
+          <ActionLink href="/station-manager/presenters" icon="🎙️" label={t("stationPresenters")} openLabel={t("open")} />
+          <ActionLink href="/station-manager/programs"   icon="📺" label={t("stationPrograms")} openLabel={t("open")} />
+          <ActionLink href="/station-manager/recordings" icon="🗂️" label={t("stationRecordings")} openLabel={t("open")} />
+          <ActionLink href="/station-manager/dj-settings" icon="⚙️" label={t("djSettingsLink")} openLabel={t("open")} />
+          <ActionLink href="/station-manager/media"      icon="🎵" label={t("mediaLibrary")} openLabel={t("open")} />
+          <ActionLink href="/station-manager/schedule"   icon="📅" label={t("stationSchedule")} openLabel={t("open")} />
         </div>
       </div>
     </div>
@@ -373,11 +377,12 @@ function StatBadge({
 }
 
 function ActionLink({
-  href, icon, label, className = "",
+  href, icon, label, openLabel, className = "",
 }: {
   href: string;
   icon: string;
   label: string;
+  openLabel: string;
   className?: string;
 }) {
   return (
@@ -391,17 +396,18 @@ function ActionLink({
       <span className="text-sm">{icon}</span>
       <div>
         <div className="text-xs font-medium transition-colors" style={{ color: "var(--eg-primary)" }}>{label}</div>
-        <div className="text-[10px]" style={{ color: "var(--eg-accent)" }}>فتح</div>
+        <div className="text-[10px]" style={{ color: "var(--eg-accent)" }}>{openLabel}</div>
       </div>
     </Link>
   );
 }
 
 function ActionPlaceholder({
-  icon, label, className = "",
+  icon, label, comingSoonLabel, className = "",
 }: {
   icon: string;
   label: string;
+  comingSoonLabel: string;
   className?: string;
 }) {
   return (
@@ -411,7 +417,7 @@ function ActionPlaceholder({
       <span className="text-sm">{icon}</span>
       <div>
         <div className="text-xs font-medium text-slate-400">{label}</div>
-        <div className="text-[10px] text-slate-600">قريبًا</div>
+        <div className="text-[10px] text-slate-600">{comingSoonLabel}</div>
       </div>
     </div>
   );

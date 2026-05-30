@@ -4,10 +4,12 @@ import Link from "next/link";
 import AutoRefresh from "./auto-refresh";
 import { AdminPageShell } from "@/components/ui";
 import DisconnectButton from "./disconnect-button";
+import { getTranslations, getLocale } from "next-intl/server";
 
-export const metadata = {
-  title: "الجلسات الحية - EGONAIR",
-};
+export async function generateMetadata() {
+  const t = await getTranslations('admin.live');
+  return { title: `${t('title')} - EGONAIR` };
+}
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +19,11 @@ export default async function LiveSessionsPage() {
   if (!session || (session.user as any).role !== "ADMIN") {
     redirect("/login");
   }
+
+  const t = await getTranslations('admin.live');
+  const tc = await getTranslations('common');
+  const tn = await getTranslations('nav');
+  const locale = await getLocale();
 
   const now = new Date();
 
@@ -31,10 +38,10 @@ export default async function LiveSessionsPage() {
   const staleThresholdMs = 10 * 1000;
 
   const statusLabel: Record<string, { ar: string; color: string }> = {
-    LIVE:       { ar: "مباشر",   color: "text-red-400 bg-red-500/10 border-red-500/20" },
-    CONNECTED:  { ar: "متصل",    color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
-    IDLE:       { ar: "خامل",    color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
-    ERROR:      { ar: "خطأ",     color: "text-rose-400 bg-rose-500/10 border-rose-500/20" },
+    LIVE:       { ar: t('statusLive'),      color: "text-red-400 bg-red-500/10 border-red-500/20" },
+    CONNECTED:  { ar: t('statusConnected'), color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
+    IDLE:       { ar: t('statusIdle'),      color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
+    ERROR:      { ar: t('statusError'),     color: "text-rose-400 bg-rose-500/10 border-rose-500/20" },
   };
 
   return (
@@ -47,28 +54,28 @@ export default async function LiveSessionsPage() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
           <div>
             <h1 className="text-3xl font-bold bg-gradient-to-l from-red-400 to-rose-500 bg-clip-text text-transparent">
-              الجلسات الحية
+              {t('title')}
             </h1>
             <p className="text-sm text-neutral-500 mt-1">
-              آخر تحديث: {now.toLocaleTimeString("ar-EG")}
+              {t('lastUpdate')}: {now.toLocaleTimeString(locale)}
             </p>
           </div>
           <div className="flex items-center gap-3">
             <span className="text-sm text-neutral-500">
-              {sessions.length} جلسة نشطة
+              {sessions.length} {t('activeSessions')}
             </span>
             <Link
               href="/admin/live"
               className="px-4 py-2 text-white text-sm font-medium rounded-lg transition-colors"
               style={{ background: "var(--eg-primary)" }}
             >
-              تحديث الصفحة
+              {t('refreshPage')}
             </Link>
             <Link
               href="/admin"
               className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-neutral-400 hover:text-neutral-200 border border-neutral-800 text-sm rounded-lg transition-colors"
             >
-              لوحة التحكم
+              {tn('adminDashboard')}
             </Link>
           </div>
         </div>
@@ -84,19 +91,19 @@ export default async function LiveSessionsPage() {
                   <line x1="12" y1="16" x2="12.01" y2="16"></line>
                 </svg>
               </div>
-              <p className="text-neutral-500">لا توجد جلسات حية في الوقت الحالي</p>
+              <p className="text-neutral-500">{t('noSessions')}</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-right border-collapse">
                 <thead>
                   <tr className="bg-neutral-950/50 border-b border-neutral-800">
-                    <th className="px-6 py-4 text-sm font-semibold text-neutral-400">المذيع</th>
-                    <th className="px-6 py-4 text-sm font-semibold text-neutral-400">الحالة</th>
-                    <th className="px-6 py-4 text-sm font-semibold text-neutral-400">الميكروفون</th>
-                    <th className="px-6 py-4 text-sm font-semibold text-neutral-400">جودة الشبكة</th>
-                    <th className="px-6 py-4 text-sm font-semibold text-neutral-400">آخر نبضة</th>
-                    <th className="px-6 py-4 text-sm font-semibold text-neutral-400">التحديث</th>
+                    <th className="px-6 py-4 text-sm font-semibold text-neutral-400">{t('presenter')}</th>
+                    <th className="px-6 py-4 text-sm font-semibold text-neutral-400">{tc('status')}</th>
+                    <th className="px-6 py-4 text-sm font-semibold text-neutral-400">{t('micState')}</th>
+                    <th className="px-6 py-4 text-sm font-semibold text-neutral-400">{t('networkQuality')}</th>
+                    <th className="px-6 py-4 text-sm font-semibold text-neutral-400">{t('lastHeartbeat')}</th>
+                    <th className="px-6 py-4 text-sm font-semibold text-neutral-400">{t('updateColumn')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-800/50">
@@ -124,7 +131,7 @@ export default async function LiveSessionsPage() {
                         <td className="px-6 py-4">
                           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border ${s.currentMicState ? "bg-red-500/10 text-red-400 border-red-500/20" : "bg-neutral-800/50 text-neutral-500 border-neutral-700"}`}>
                             <div className={`w-1.5 h-1.5 rounded-full ${s.currentMicState ? "bg-red-500" : "bg-neutral-600"}`}></div>
-                            {s.currentMicState ? "مفتوح" : "مغلق"}
+                            {s.currentMicState ? t('micOpen') : t('micClosed')}
                           </span>
                         </td>
                         <td className="px-6 py-4">
@@ -134,21 +141,21 @@ export default async function LiveSessionsPage() {
                           {isStale ? (
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
                               <div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div>
-                              متأخر
+                              {t('stale')}
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                              حي
+                              {t('alive')}
                             </span>
                           )}
                         </td>
                         <td className="px-6 py-4">
                           <div className="text-sm text-neutral-500">
-                            {new Date(s.updatedAt).toLocaleTimeString("ar-EG")}
+                            {new Date(s.updatedAt).toLocaleTimeString(locale)}
                           </div>
                           <div className="text-xs text-neutral-600 mt-0.5">
-                            منذ {Math.round(ageMs / 1000)} ث
+                            {t('ago')} {Math.round(ageMs / 1000)} {t('secondsShort')}
                           </div>
                           <DisconnectButton sessionId={s.id} />
                         </td>

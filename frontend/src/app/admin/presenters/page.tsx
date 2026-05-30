@@ -6,12 +6,17 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { EmptyState }  from "@/components/ui/EmptyState";
 import { AdminPageShell } from "@/components/ui";
 import { togglePresenterActive } from "./actions";
+import { getTranslations, getLocale } from "next-intl/server";
+import { getSystemSettings } from "@/lib/system-settings";
+import { DATE_LOCALES, type Locale } from "@/i18n/config";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "إدارة المذيعين - EGONAIR",
-};
+export async function generateMetadata() {
+  const settings = await getSystemSettings();
+  const t = await getTranslations('admin.presenters');
+  return { title: t('metaTitle', { name: settings.systemName || "EGONAIR" }) };
+}
 
 export default async function PresentersPage({
   searchParams,
@@ -23,6 +28,11 @@ export default async function PresentersPage({
   if (!session || (session.user as any).role !== "ADMIN") {
     redirect("/login");
   }
+
+  const t = await getTranslations('admin.presenters');
+  const tCommon = await getTranslations('common');
+  const locale = await getLocale();
+  const dateLocale = DATE_LOCALES[locale as Locale] || locale;
 
   const {
     stationIds: stationIdsParam,
@@ -151,7 +161,7 @@ export default async function PresentersPage({
 
   // Filter label for header — show first selected station name(s)
   const selectedStationNames = filterStationIds
-    .map(id => id === "none" ? "غير مرتبط بمحطة" : allStations.find(s => s.id === id)?.name)
+    .map(id => id === "none" ? t('notLinkedToStation') : allStations.find(s => s.id === id)?.name)
     .filter(Boolean) as string[];
   const filterLabel = selectedStationNames.length > 0 ? selectedStationNames.join(" · ") : null;
 
@@ -171,9 +181,8 @@ export default async function PresentersPage({
   const renderPagination = () => (
     <div className="flex flex-col sm:flex-row items-center justify-between gap-3 py-2 border-t border-neutral-800">
       <span className="text-xs text-neutral-500">
-        صفحة <span className="text-neutral-300 font-medium">{page}</span> من{" "}
-        <span className="text-neutral-300 font-medium">{totalPages}</span>
-        {" "}· {presenters.length > 0 ? `${finalSkip + 1}–${finalSkip + presenters.length}` : "0"} من {totalCount} مذيع
+        {t('pageOf', { page, totalPages })}
+        {" "}· {presenters.length > 0 ? t('showingRange', { start: finalSkip + 1, end: finalSkip + presenters.length, total: totalCount }) : t('showingZero', { total: totalCount })}
       </span>
       <div className="flex items-center gap-2 flex-wrap">
         <form method="get" className="flex items-center gap-1.5">
@@ -181,7 +190,7 @@ export default async function PresentersPage({
           {filterMode && filterMode !== "all" && <input type="hidden" name="mode" value={filterMode} />}
           {filterStationIds.length > 0 && <input type="hidden" name="stationIds" value={filterStationIds.join(",")} />}
           {filterStatus && filterStatus !== "all" && <input type="hidden" name="status" value={filterStatus} />}
-          <label htmlFor="pageSize" className="text-xs text-neutral-500">عدد النتائج:</label>
+          <label htmlFor="pageSize" className="text-xs text-neutral-500">{t('resultsCount')}</label>
           <select id="pageSize" name="pageSize" defaultValue={finalPageSize}
             className="bg-neutral-800 border border-neutral-700 text-neutral-300 text-xs rounded-lg px-2 py-1 outline-none focus:border-indigo-500">
             <option value="20">20</option>
@@ -190,14 +199,14 @@ export default async function PresentersPage({
             <option value="80">80</option>
             <option value="100">100</option>
           </select>
-          <button type="submit" className="px-2.5 py-1 bg-neutral-700 hover:bg-neutral-600 text-neutral-300 text-xs font-medium rounded-lg border border-neutral-600 transition-colors">تطبيق</button>
+          <button type="submit" className="px-2.5 py-1 bg-neutral-700 hover:bg-neutral-600 text-neutral-300 text-xs font-medium rounded-lg border border-neutral-600 transition-colors">{tCommon('apply')}</button>
         </form>
         {page > 1
-          ? <Link href={buildUrl(page - 1)} className="px-3 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-medium rounded-lg border border-neutral-700 transition-colors">السابق</Link>
-          : <span className="px-3 py-1 text-neutral-600 text-xs rounded-lg border border-neutral-800/50 cursor-not-allowed">السابق</span>}
+          ? <Link href={buildUrl(page - 1)} className="px-3 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-medium rounded-lg border border-neutral-700 transition-colors">{t('previous')}</Link>
+          : <span className="px-3 py-1 text-neutral-600 text-xs rounded-lg border border-neutral-800/50 cursor-not-allowed">{t('previous')}</span>}
         {page < totalPages
-          ? <Link href={buildUrl(page + 1)} className="px-3 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-medium rounded-lg border border-neutral-700 transition-colors">التالي</Link>
-          : <span className="px-3 py-1 text-neutral-600 text-xs rounded-lg border border-neutral-800/50 cursor-not-allowed">التالي</span>}
+          ? <Link href={buildUrl(page + 1)} className="px-3 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-medium rounded-lg border border-neutral-700 transition-colors">{t('next')}</Link>
+          : <span className="px-3 py-1 text-neutral-600 text-xs rounded-lg border border-neutral-800/50 cursor-not-allowed">{t('next')}</span>}
       </div>
     </div>
   );
@@ -213,14 +222,14 @@ export default async function PresentersPage({
               className="text-3xl font-bold bg-clip-text text-transparent"
               style={{ backgroundImage: "linear-gradient(to left, var(--eg-primary), var(--eg-accent))" }}
             >
-              إدارة المذيعين
+              {t('title')}
             </h1>
             {filterLabel && (
               <p className="text-sm mt-1" style={{ color: "var(--eg-primary)" }}>
-                فلترة: <span className="font-medium">{filterLabel}</span>
+                {t('filterLabel')} <span className="font-medium">{filterLabel}</span>
                 {" · "}
                 <Link href="/admin/presenters" className="text-neutral-500 hover:text-neutral-300 transition-colors">
-                  إلغاء الفلتر
+                  {t('clearFilter')}
                 </Link>
               </p>
             )}
@@ -230,14 +239,14 @@ export default async function PresentersPage({
               href="/admin"
               className="px-4 py-2 text-sm bg-neutral-900 hover:bg-neutral-800 text-neutral-400 hover:text-neutral-200 border border-neutral-800 rounded-lg transition-colors"
             >
-              لوحة الإدارة
+              {t('backToDashboard')}
             </Link>
             <Link
               href="/admin/presenters/new"
               className="px-6 py-2.5 text-white font-medium rounded-lg transition-colors shadow-lg"
               style={{ background: "var(--eg-primary)", boxShadow: "0 4px 14px color-mix(in srgb, var(--eg-primary) 25%, transparent)" }}
             >
-              إضافة مذيع
+              {t('addPresenter')}
             </Link>
           </div>
         </div>
@@ -263,13 +272,13 @@ export default async function PresentersPage({
               icon="👥"
               title={
                 q || filterStationIds.length > 0 || (filterMode && filterMode !== "all") || (filterStatus && filterStatus !== "all")
-                  ? "لا يوجد مذيعون متطابقون مع بحثك"
-                  : "لا يوجد مذيعين حالياً"
+                  ? t('noMatchingPresenters')
+                  : t('noPresenters')
               }
               description={
                 q || filterStationIds.length > 0 || (filterMode && filterMode !== "all") || (filterStatus && filterStatus !== "all")
-                  ? "جرب تعديل الفلاتر أو مسحها لرؤية نتائج أكثر."
-                  : "أضف مذيعاً جديداً للبدء."
+                  ? t('tryAdjustFilters')
+                  : t('addFirstPresenter')
               }
             />
           </div>
@@ -295,21 +304,21 @@ export default async function PresentersPage({
                   {/* Status badges row */}
                   <div className="flex items-center gap-2 flex-wrap">
                     <StatusBadge
-                      label={presenter.isActive ? "نشط" : "غير نشط"}
+                      label={presenter.isActive ? t('isActive') : t('isInactive')}
                       variant={presenter.isActive ? "success" : "danger"}
                       dot
                     />
                     <StatusBadge
-                      label={presenter.canBroadcast ? "بث مسموح" : "بث موقوف"}
+                      label={presenter.canBroadcast ? t('broadcastAllowed') : t('broadcastStopped')}
                       variant={presenter.canBroadcast ? "info" : "neutral"}
                     />
                     <StatusBadge
                       label={
                         presenter.presenterMode === "DIRECT_DJ"
-                          ? "🎙️ DJ مباشر"
+                          ? t('directDjLabel')
                           : presenter.presenterMode === "MULTI_STATION"
-                          ? "📡 متعدد"
-                          : "📻 محطة واحدة"
+                          ? t('multiStationBadgeShort')
+                          : t('singleStationBadgeShort')
                       }
                       variant={presenter.presenterMode === "DIRECT_DJ" ? "warning" : "info"}
                     />
@@ -318,7 +327,7 @@ export default async function PresentersPage({
                   {/* Stations */}
                   <div>
                     {presenter.presenterStations.length === 0 ? (
-                      <span className="text-xs text-neutral-600 italic">غير مرتبط بمحطة</span>
+                      <span className="text-xs text-neutral-600 italic">{t('notLinkedToStation')}</span>
                     ) : (
                       <div className="flex flex-wrap gap-1.5">
                         {presenter.presenterStations.map(({ station }) => (
@@ -335,11 +344,11 @@ export default async function PresentersPage({
                   {(presenter.validity?.validFrom || presenter.validity?.validTo) && (
                     <div className="text-[11px] text-neutral-500 space-y-0.5 border-t border-neutral-800 pt-2" dir="ltr">
                       {presenter.validity?.validFrom && (
-                        <p>من: <span className="text-neutral-400">{new Date(presenter.validity.validFrom).toLocaleDateString("ar-EG")}</span></p>
+                        <p>{t('validFrom')}: <span className="text-neutral-400">{new Date(presenter.validity.validFrom).toLocaleDateString(dateLocale)}</span></p>
                       )}
                       {presenter.validity?.validTo && (
-                        <p>إلى: <span className={isExpired ? "text-red-400 font-medium" : "text-neutral-400"}>
-                          {new Date(presenter.validity.validTo).toLocaleDateString("ar-EG")}
+                        <p>{t('validTo')}: <span className={isExpired ? "text-red-400 font-medium" : "text-neutral-400"}>
+                          {new Date(presenter.validity.validTo).toLocaleDateString(dateLocale)}
                           {isExpired && " ⚠️"}
                         </span></p>
                       )}
@@ -351,7 +360,7 @@ export default async function PresentersPage({
                     <Link href={`/admin/presenters/${presenter.id}/edit`}
                       className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg transition-colors border"
                       style={{ color: "var(--eg-primary)", background: "color-mix(in srgb, var(--eg-primary) 10%, transparent)", borderColor: "color-mix(in srgb, var(--eg-primary) 20%, transparent)" }}>
-                      تعديل
+                      {tCommon('edit')}
                     </Link>
                     <form action={togglePresenterActive} className="inline">
                       <input type="hidden" name="presenterId"    value={presenter.id} />
@@ -362,12 +371,12 @@ export default async function PresentersPage({
                             ? "text-amber-400 bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/20"
                             : "text-emerald-400 bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/20"
                         }`}>
-                        {presenter.isActive ? "تعطيل" : "تفعيل"}
+                        {presenter.isActive ? t('disable') : t('enable')}
                       </button>
                     </form>
                     <Link href={`/admin/presenters/${presenter.id}/delete`}
                       className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg transition-colors">
-                      حذف
+                      {tCommon('delete')}
                     </Link>
                   </div>
                 </div>

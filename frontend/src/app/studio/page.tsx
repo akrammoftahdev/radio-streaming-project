@@ -6,28 +6,40 @@ import DirectDjPreFlightScreen from "./direct-dj-pre-flight-screen";
 import WaitScreen from "./wait-screen";
 import { resolveCurrentOrNextProgramSession } from "@/lib/resolve-program-session";
 import { Unauthorized } from "@/components/ui/Unauthorized";
+import { getTranslations, getLocale } from 'next-intl/server';
+import { isRtl, DATE_LOCALES } from '@/i18n/config';
+import LanguageSwitcher from "@/components/ui/LanguageSwitcher";
 
-export const metadata = {
-  title: "استوديو البث - EGONAIR",
-};
+export async function generateMetadata() {
+  const t = await getTranslations('studio.gate');
+  return { title: t('metaTitle') };
+}
 
 // Force Next.js to always re-run this server component — never serve cached HTML.
 // This ensures schedule changes are reflected immediately on next visit.
 export const dynamic = "force-dynamic";
 
-// ── Shared sign-out button ────────────────────────────────────────────────────
-function SignOutButton() {
+// ── Shared top navigation ───────────────────────────────────────────────────
+function TopNav({ label, dir }: { label: string, dir: "rtl" | "ltr" }) {
   return (
-    <form action={async () => { "use server"; await signOut({ redirectTo: "/login" }); }}>
-      <button type="submit" className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-400 hover:text-red-400 bg-neutral-900 hover:bg-red-500/10 border border-neutral-800 hover:border-red-500/30 rounded-lg transition-colors">
-        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        تسجيل الخروج
-      </button>
-    </form>
+    <div className={`absolute top-4 ${dir === 'rtl' ? 'left-4' : 'right-4'} flex items-center gap-2 z-50`}>
+      <LanguageSwitcher />
+      <form action={async () => { "use server"; await signOut({ redirectTo: "/login" }); }}>
+        <button type="submit" className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-400 hover:text-red-400 bg-neutral-900 hover:bg-red-500/10 border border-neutral-800 hover:border-red-500/30 rounded-lg transition-colors h-10">
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          {label}
+        </button>
+      </form>
+    </div>
   );
 }
 
 export default async function StudioServerPage() {
+  const t = await getTranslations('studio.gate');
+  const tAuth = await getTranslations('auth');
+  const locale = await getLocale();
+  const dir = isRtl(locale) ? 'rtl' : 'ltr';
+  const dateLocale = DATE_LOCALES[locale as keyof typeof DATE_LOCALES] || locale;
   const session = await auth();
 
   if (!session) redirect("/login");
@@ -49,14 +61,14 @@ export default async function StudioServerPage() {
   // ── Account active check (all roles) ───────────────────────────────
   if (!presenter?.isActive) {
     return (
-      <div dir="rtl" className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-4 font-sans relative">
-        <div className="absolute top-4 left-4"><SignOutButton /></div>
+      <div dir={dir} className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-4 font-sans relative">
+        <TopNav label={tAuth('logout')} dir={dir} />
         <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-8 max-w-md w-full text-center shadow-xl">
           <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
             <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
           </div>
-          <h2 className="text-xl font-bold text-neutral-200 mb-2">الحساب غير نشط</h2>
-          <p className="text-neutral-400">تم تعطيل هذا الحساب. تواصل مع الإدارة.</p>
+          <h2 className="text-xl font-bold text-neutral-200 mb-2">{t('accountInactive')}</h2>
+          <p className="text-neutral-400">{t('accountInactiveDesc')}</p>
         </div>
       </div>
     );
@@ -68,14 +80,14 @@ export default async function StudioServerPage() {
   // not be checked here to prevent a silent save from locking DJs out.
   if (presenter.presenterMode !== 'DIRECT_DJ' && !presenter.canBroadcast) {
     return (
-      <div dir="rtl" className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-4 font-sans relative">
-        <div className="absolute top-4 left-4"><SignOutButton /></div>
+      <div dir={dir} className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-4 font-sans relative">
+        <TopNav label={tAuth('logout')} dir={dir} />
         <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-8 max-w-md w-full text-center shadow-xl">
           <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
             <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
           </div>
-          <h2 className="text-xl font-bold text-neutral-200 mb-2">الحساب غير مفعّل للبث</h2>
-          <p className="text-neutral-400">هذا الحساب لا يملك صلاحية البث حالياً. تواصل مع الإدارة.</p>
+          <h2 className="text-xl font-bold text-neutral-200 mb-2">{t('broadcastDisabled')}</h2>
+          <p className="text-neutral-400">{t('broadcastDisabledDesc')}</p>
         </div>
       </div>
     );
@@ -94,28 +106,28 @@ export default async function StudioServerPage() {
     if (validity) {
       if (validity.validFrom && now < validity.validFrom) {
         return (
-          <div dir="rtl" className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-4 font-sans relative">
-            <div className="absolute top-4 left-4"><SignOutButton /></div>
+          <div dir={dir} className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-4 font-sans relative">
+            <TopNav label={tAuth('logout')} dir={dir} />
             <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-8 max-w-md w-full text-center shadow-xl">
               <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               </div>
-              <h2 className="text-xl font-bold text-neutral-200 mb-2">الحساب لم يبدأ بعد</h2>
-              <p className="text-neutral-400">صلاحية الحساب تبدأ في {validity.validFrom.toLocaleDateString('ar-EG')}. تواصل مع الإدارة.</p>
+              <h2 className="text-xl font-bold text-neutral-200 mb-2">{t('accountNotStarted')}</h2>
+              <p className="text-neutral-400">{t('accountNotStartedDesc', { date: validity.validFrom.toLocaleDateString(dateLocale) })}</p>
             </div>
           </div>
         );
       }
       if (validity.validTo && now > validity.validTo) {
         return (
-          <div dir="rtl" className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-4 font-sans relative">
-            <div className="absolute top-4 left-4"><SignOutButton /></div>
+          <div dir={dir} className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-4 font-sans relative">
+            <TopNav label={tAuth('logout')} dir={dir} />
             <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-8 max-w-md w-full text-center shadow-xl">
               <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
               </div>
-              <h2 className="text-xl font-bold text-neutral-200 mb-2">انتهت صلاحية الحساب</h2>
-              <p className="text-neutral-400">انتهت صلاحية حسابك في {validity.validTo.toLocaleDateString('ar-EG')}. تواصل مع الإدارة لتجديد الاشتراك.</p>
+              <h2 className="text-xl font-bold text-neutral-200 mb-2">{t('accountExpired')}</h2>
+              <p className="text-neutral-400">{t('accountExpiredDesc', { date: validity.validTo.toLocaleDateString(dateLocale) })}</p>
             </div>
           </div>
         );
@@ -213,17 +225,17 @@ export default async function StudioServerPage() {
   // ── No schedule found at all ──────────────────────────────────────────────
   if (!unified) {
     return (
-      <div dir="rtl" className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-4 font-sans relative">
-        <div className="absolute top-4 left-4"><SignOutButton /></div>
+      <div dir={dir} className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-4 font-sans relative">
+        <TopNav label={tAuth('logout')} dir={dir} />
         <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-8 max-w-md w-full text-center shadow-xl">
           <div className="w-16 h-16 bg-neutral-800 rounded-full flex items-center justify-center mx-auto mb-4">
             <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-neutral-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
           </div>
-          <h2 className="text-xl font-bold text-neutral-200 mb-2">عذراً</h2>
-          <p className="text-neutral-400 mb-6">لا يوجد موعد بث محدد لهذا الحساب</p>
+          <h2 className="text-xl font-bold text-neutral-200 mb-2">{t('sorry')}</h2>
+          <p className="text-neutral-400 mb-6">{t('noSchedule')}</p>
           <a href="/studio/recordings" className="inline-flex items-center justify-center gap-2 w-full py-2.5 text-sm font-medium text-indigo-300 hover:text-white bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/30 hover:border-indigo-500/60 rounded-xl transition-all">
             <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-            أرشيف تسجيلاتي
+            {t('myRecordings')}
           </a>
         </div>
       </div>
@@ -292,7 +304,7 @@ export default async function StudioServerPage() {
 
   // ── UPCOMING SESSION: show WaitScreen countdown ───────────────────────────
   if (now < unified.gateOpenTime) {
-    const formatter = new Intl.DateTimeFormat("ar-EG", {
+    const formatter = new Intl.DateTimeFormat(dateLocale, {
       timeZone: "Africa/Cairo",
       year: "numeric", month: "long", day: "numeric",
       hour: "numeric", minute: "numeric",
@@ -325,22 +337,22 @@ export default async function StudioServerPage() {
 
   // ── PAST SESSION: schedule existed but has ended ──────────────────────────
   return (
-    <div dir="rtl" className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-4 font-sans relative overflow-hidden">
-      <div className="absolute top-4 left-4 z-10"><SignOutButton /></div>
+    <div dir={dir} className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-4 font-sans relative overflow-hidden">
+      <TopNav label={tAuth('logout')} dir={dir} />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-indigo-500/5 rounded-full blur-[100px] pointer-events-none"></div>
       <div className="z-10 bg-neutral-900 border border-neutral-800 rounded-3xl p-10 max-w-md w-full text-center shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 to-cyan-500"></div>
         <div className="w-20 h-20 bg-neutral-950 border border-neutral-800 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
           <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M12 14v4"/><path d="M10 16h4"/></svg>
         </div>
-        <h1 className="text-2xl font-bold text-neutral-100 mb-2">انتهى موعد البث</h1>
-        <p className="text-neutral-400 mt-2 mb-6">يمكنك الاستماع إلى تسجيلاتك السابقة.</p>
+        <h1 className="text-2xl font-bold text-neutral-100 mb-2">{t('sessionEnded')}</h1>
+        <p className="text-neutral-400 mt-2 mb-6">{t('sessionEndedDesc')}</p>
         <div className="space-y-3">
           <a href="/studio/recordings" className="flex items-center justify-center gap-2 w-full py-3 text-sm font-medium text-indigo-300 hover:text-white bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/30 hover:border-indigo-500/60 rounded-xl transition-all">
             <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-            أرشيف تسجيلاتي
+            {t('myRecordings')}
           </a>
-          <p className="text-xs text-neutral-600">يرجى مراجعة الإدارة لتحديد موعد جديد.</p>
+          <p className="text-xs text-neutral-600">{t('contactAdminNewSchedule')}</p>
         </div>
       </div>
     </div>

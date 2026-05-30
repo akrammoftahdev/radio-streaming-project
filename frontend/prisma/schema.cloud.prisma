@@ -39,6 +39,7 @@ model User {
   directDjRadios           DirectDjRadio[]
   dspPresets               DspPreset[]
   activeDspPresetId        String?               @map("active_dsp_preset_id")
+  preferredLanguage        String?               @map("preferred_language")
 }
 
 model PresenterProfile {
@@ -591,6 +592,9 @@ model SystemSettings {
   updatedBy       String?                                 @map("updated_by")
   createdAt       DateTime @default(now())                @map("created_at")
   updatedAt       DateTime @updatedAt                     @map("updated_at")
+
+  // ── i18n ───────────────────────────────────────────────────────────────────
+  defaultLanguage String   @default("ar")                  @map("default_language")
 }
 
 model DspPreset {

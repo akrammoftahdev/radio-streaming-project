@@ -41,6 +41,8 @@ export async function saveSystemSettings(formData: FormData) {
     mobileAppIconUrl:  sanitise("mobileAppIconUrl"),
     splashScreenUrl:   sanitise("splashScreenUrl"),
     faviconUrl:        sanitise("faviconUrl"),
+    // i18n
+    defaultLanguage:   sanitise("defaultLanguage") ?? "ar",
     // Meta
     updatedBy: userId ?? null,
   };

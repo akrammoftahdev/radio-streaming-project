@@ -4,6 +4,8 @@ import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import NoSleep from "nosleep.js";
+import { useLocale } from "next-intl";
+import { isRtl } from "@/i18n/config";
 import DspPanel from "@/components/studio/DspPanel";
 import { type DspParams, DEFAULT_DSP_PARAMS } from "@/lib/dsp-presets";
 
@@ -268,6 +270,9 @@ export default function StudioPage({
   directDjRadioId,
   scheduledStationId,
 }: Props) {
+
+  const locale = useLocale();
+  const dir = isRtl(locale) ? 'rtl' : 'ltr';
 
   const [isMicOpen, setIsMicOpen] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
@@ -2323,7 +2328,7 @@ export default function StudioPage({
   }, [mediaQueue, removeQueueItem, handleRemoveLocalFile]);
 
   return (
-    <div dir="rtl" className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-4 font-sans relative overflow-hidden">
+    <div dir={dir} className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-4 font-sans relative overflow-hidden">
       {/* ── Session-end auto-disconnect banner ── */}
       {autoDisconnectMsg && (
         <div className={`absolute top-4 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-full shadow-xl backdrop-blur-md font-bold text-sm text-center border animate-pulse ${

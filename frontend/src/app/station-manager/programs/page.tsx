@@ -9,9 +9,10 @@ import type { ProgramRowClient, ScheduleRule, ScheduleSlot } from "./program-car
 import { SMStationFilter } from "@/components/sm-station-filter";
 import { SMSearchBar } from "@/components/sm-search-bar";
 import { Unauthorized } from "@/components/ui/Unauthorized";
+import { getTranslations, getLocale } from "next-intl/server";
+import { isRtl } from "@/i18n/config";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "برامج المحطة - EGONAIR" };
 
 async function getScope(managerId: string) {
   const assignments = await prisma.stationManagerAssignment.findMany({
@@ -32,8 +33,13 @@ export default async function SMProgramsPage({
   const role = (session.user as any)?.role as string;
   if (role !== "STATION_MANAGER") return <Unauthorized role={role} />;
 
+  const t = await getTranslations("stationManager.programs");
+  const tDash = await getTranslations("stationManager.dashboard");
+  const locale = await getLocale();
+  const dir = isRtl(locale) ? "rtl" : "ltr";
+
   const managerId   = (session.user as any)?.id as string;
-  const managerName = session.user.name ?? session.user.email ?? "مدير المحطة";
+  const managerName = session.user.name ?? session.user.email ?? tDash("defaultRole");
   const { stations, stationIds } = await getScope(managerId);
 
   const sp = await searchParams;
@@ -120,15 +126,13 @@ export default async function SMProgramsPage({
   }
 
   const STATUS_OPTIONS = [
-    { value: "all",      label: "الكل"   },
-    { value: "active",   label: "نشطة"  },
-    { value: "inactive", label: "معطّلة" },
+    { value: "all",      label: t("statusAll")      },
+    { value: "active",   label: t("statusActive")   },
+    { value: "inactive", label: t("statusInactive") },
   ];
 
   return (
-    <div dir="rtl" className="min-h-screen bg-slate-950 text-slate-100"
-      style={{ fontFamily: "'Cairo','Segoe UI',system-ui,sans-serif" }}>
-      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" />
+    <div dir={dir} className="min-h-screen bg-slate-950 text-slate-100">
 
       <header className="bg-slate-900 border-b border-slate-800 shadow-lg sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -139,30 +143,30 @@ export default async function SMProgramsPage({
               style={{ background: "linear-gradient(to bottom right, var(--eg-accent), var(--eg-primary))" }}
             >📺</div>
             <div>
-              <h1 className="text-base font-bold text-slate-100 leading-tight">برامج المحطة</h1>
+              <h1 className="text-base font-bold text-slate-100 leading-tight">{t("pageTitle")}</h1>
               <p className="text-xs text-slate-500">{managerName}</p>
             </div>
           </div>
-          <Link href="/station-manager" className="text-xs text-slate-400 hover:text-teal-300 border border-slate-700 hover:border-teal-600/50 rounded-lg px-3 py-2 transition-colors">← اللوحة</Link>
+          <Link href="/station-manager" className="text-xs text-slate-400 hover:text-teal-300 border border-slate-700 hover:border-teal-600/50 rounded-lg px-3 py-2 transition-colors">{tDash("backToDashboard")}</Link>
         </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-8 space-y-8">
         {spError   && <div className="bg-red-950/50 border border-red-500/30 text-red-400 rounded-xl px-4 py-3 text-sm">⚠️ {spError}</div>}
-        {spSuccess && <div className="bg-emerald-950/50 border border-emerald-500/30 text-emerald-400 rounded-xl px-4 py-3 text-sm">✅ تمت العملية بنجاح.</div>}
+        {spSuccess && <div className="bg-emerald-950/50 border border-emerald-500/30 text-emerald-400 rounded-xl px-4 py-3 text-sm">✅ {t("operationSuccess")}</div>}
 
         {stationIds.length === 0 && (
-          <EmptyState icon="📭" title="لا توجد محطات مسندة" description="لم يتم إسناد أي محطة لحسابك. تواصل مع الإدارة لتفعيل صلاحياتك." />
+          <EmptyState icon="📭" title={t("noStationsAssigned")} description={t("noStationsDescription")} />
         )}
 
         {stationIds.length > 0 && (
           <>
             {/* Create program */}
             <section className="bg-slate-900 border border-slate-700/50 rounded-2xl p-6">
-              <h2 className="text-base font-bold text-slate-100 mb-4 flex items-center gap-2"><span>➕</span> إضافة برنامج جديد</h2>
+              <h2 className="text-base font-bold text-slate-100 mb-4 flex items-center gap-2"><span>➕</span> {t("addNewProgram")}</h2>
               <form action={createProgramAction} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-slate-400 mb-1">عنوان البرنامج *</label>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">{t("programTitle")}</label>
                   <input name="title" type="text" required
                     className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition-colors"
                     onFocus={e => { e.currentTarget.style.borderColor = "var(--eg-primary)"; }}
@@ -170,25 +174,25 @@ export default async function SMProgramsPage({
                     style={{ borderColor: "var(--eg-border)" }} />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1">المحطة *</label>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">{t("station")}</label>
                   <select name="stationId" required
                     className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-slate-100 outline-none transition-colors"
                     onFocus={e => { e.currentTarget.style.borderColor = "var(--eg-primary)"; }}
                     onBlur={e  => { e.currentTarget.style.borderColor = "var(--eg-border)"; }}
                     style={{ borderColor: "var(--eg-border)" }}
                     defaultValue={stations.length === 1 ? stations[0].id : ""}>
-                    {stations.length > 1 && <option value="">اختر محطة...</option>}
+                    {stations.length > 1 && <option value="">{t("selectStation")}</option>}
                     {stations.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1">المذيع *</label>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">{t("presenter")}</label>
                   <select name="presenterId" required
                     className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-slate-100 outline-none transition-colors"
                     onFocus={e => { e.currentTarget.style.borderColor = "var(--eg-primary)"; }}
                     onBlur={e  => { e.currentTarget.style.borderColor = "var(--eg-border)"; }}
                     style={{ borderColor: "var(--eg-border)" }}>
-                    <option value="">اختر مذيعاً...</option>
+                    <option value="">{t("selectPresenter")}</option>
                     {presentersForCreate.map((p) => (
                       <option key={p.id} value={p.id}>{p.name ?? p.username}</option>
                     ))}
@@ -198,7 +202,7 @@ export default async function SMProgramsPage({
                   <button type="submit"
                     className="text-white font-semibold text-sm rounded-xl px-6 py-2.5 transition-colors"
                     style={{ background: "var(--eg-primary)" }}>
-                    إنشاء البرنامج
+                    {t("createProgram")}
                   </button>
                 </div>
               </form>
@@ -212,7 +216,7 @@ export default async function SMProgramsPage({
                   stations={stations}
                   paramKey="station"
                   accent="purple"
-                  allLabel="كل المحطات"
+                  allLabel={t("allStations")}
                 />
               )}
 
@@ -242,18 +246,18 @@ export default async function SMProgramsPage({
               </div>
 
               {/* Search */}
-              <SMSearchBar placeholder="بحث في البرامج..." paramKey="q" />
+              <SMSearchBar placeholder={t("searchPlaceholder")} paramKey="q" />
             </div>
 
             {/* Program list */}
             <section>
               <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-widest mb-4">
-                البرامج ({programs.length})
+                {t("programCount", { count: programs.length })}
               </h2>
               {programs.length === 0
                 ? <EmptyState icon="📺"
-                    title={(filterStation || filterStatus !== "all" || q) ? "لا توجد برامج مطابقة" : "لا توجد برامج بعد"}
-                    description={(filterStation || filterStatus !== "all" || q) ? "جرب تعديل فلاتر البحث." : "ستظهر هنا برامج المحطة بعد إنشائها."}
+                    title={(filterStation || filterStatus !== "all" || q) ? t("noMatchingPrograms") : t("noProgramsYet")}
+                    description={(filterStation || filterStatus !== "all" || q) ? t("adjustFilters") : t("programsWillAppear")}
                   />
                 : <div className="space-y-4">
                     {programs.map((prog) => (

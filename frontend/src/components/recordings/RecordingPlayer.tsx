@@ -18,6 +18,8 @@
  */
 
 import React, { useRef, useState, useEffect, useCallback } from "react";
+import { useTranslations, useLocale } from "next-intl";
+import { DATE_LOCALES, type Locale } from "@/i18n/config";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -35,8 +37,8 @@ export function recordingMimeType(localPath: string): string {
   return localPath.endsWith(".mp3") ? "audio/mpeg" : "audio/webm";
 }
 
-export function formatArabicSessionDate(d: Date | string): string {
-  return new Intl.DateTimeFormat("ar-EG", {
+export function formatSessionDate(d: Date | string, dateLocale: string): string {
+  return new Intl.DateTimeFormat(dateLocale, {
     timeZone: "Africa/Cairo",
     day:      "numeric",
     month:    "long",
@@ -46,8 +48,8 @@ export function formatArabicSessionDate(d: Date | string): string {
   }).format(new Date(d));
 }
 
-export function formatArabicDate(d: Date | string): string {
-  return new Intl.DateTimeFormat("ar-EG", {
+export function formatDate(d: Date | string, dateLocale: string): string {
+  return new Intl.DateTimeFormat(dateLocale, {
     timeZone: "Africa/Cairo",
     weekday:  "long",
     year:     "numeric",
@@ -56,26 +58,26 @@ export function formatArabicDate(d: Date | string): string {
   }).format(new Date(d));
 }
 
-export function formatArabicTime(d: Date | string): string {
-  return new Intl.DateTimeFormat("ar-EG", {
+export function formatTime(d: Date | string, dateLocale: string): string {
+  return new Intl.DateTimeFormat(dateLocale, {
     timeZone: "Africa/Cairo",
     hour:     "numeric",
     minute:   "2-digit",
   }).format(new Date(d));
 }
 
-export function formatDurationArabic(seconds: number): string {
+export function formatDuration(seconds: number, t: (key: string) => string): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
-  if (m === 0) return `${s} ث`;
-  if (s === 0) return `${m} د`;
-  return `${m} د ${s} ث`;
+  if (m === 0) return `${s} ${t("seconds")}`;
+  if (s === 0) return `${m} ${t("minutes")}`;
+  return `${m} ${t("minutes")} ${s} ${t("seconds")}`;
 }
 
-export function formatBytes(bytes: number): string {
-  if (bytes < 1024)        return `${bytes} بايت`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} كيلوبايت`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} ميغابايت`;
+export function formatBytes(bytes: number, t: (key: string) => string): string {
+  if (bytes < 1024)        return `${bytes} ${t("bytes")}`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} ${t("kilobytes")}`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} ${t("megabytes")}`;
 }
 
 function fmtTime(s: number): string {
@@ -116,8 +118,12 @@ export function RecordingCompactPlayer({
   setPlayingId,
   showPresenter = false,
 }: CompactPlayerProps) {
+  const t = useTranslations("recordings");
+  const locale = useLocale();
+  const dateLocale = DATE_LOCALES[locale as Locale] || locale;
+
   // mounted guard: SSR and first client render must be identical.
-  // formatArabicSessionDate uses Intl (ar-EG) which can differ between
+  // formatSessionDate uses Intl which can differ between
   // Node.js and browser ICU, causing hydration mismatches.
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
@@ -136,8 +142,8 @@ export function RecordingCompactPlayer({
   const playUrl  = recordingPlayUrl(rec.localPath);
   const dlUrl    = recordingDownloadUrl(rec.localPath);
   // Render date only after mount to avoid Intl locale mismatch between Node and browser
-  const dateLabel = mounted ? formatArabicSessionDate(rec.startedAt) : "";
-  const dur = rec.durationSeconds != null ? formatDurationArabic(rec.durationSeconds) : null;
+  const dateLabel = mounted ? formatSessionDate(rec.startedAt, dateLocale) : "";
+  const dur = rec.durationSeconds != null ? formatDuration(rec.durationSeconds, t) : null;
 
   const handleToggle = useCallback(() => {
     const el = audioRef.current;
@@ -199,7 +205,7 @@ export function RecordingCompactPlayer({
               ? "bg-indigo-500 text-white shadow-[0_0_10px_rgba(99,102,241,0.5)]"
               : "bg-neutral-800 hover:bg-indigo-600/30 text-neutral-400 hover:text-indigo-300"
           }`}
-          title={isPlaying ? "إيقاف مؤقت" : "تشغيل"}
+          title={isPlaying ? t("pause") : t("play")}
         >
           {isPlaying ? (
             <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
@@ -214,7 +220,7 @@ export function RecordingCompactPlayer({
 
         <div className="flex-1 min-w-0">
           <span className="block text-xs font-medium text-neutral-300 truncate">
-            {showPresenter && rec.presenterName ? `${rec.presenterName} — ` : ""}جلسة{dateLabel ? ` — ${dateLabel}` : ""}
+            {showPresenter && rec.presenterName ? `${rec.presenterName} — ` : ""}{t("session")}{dateLabel ? ` — ${dateLabel}` : ""}
           </span>
           <span className="text-[10px] text-neutral-600">{dur ?? ""}</span>
         </div>
@@ -223,7 +229,7 @@ export function RecordingCompactPlayer({
           href={dlUrl}
           download
           className="flex-shrink-0 w-6 h-6 rounded-lg flex items-center justify-center bg-neutral-800 hover:bg-neutral-700 text-neutral-500 hover:text-neutral-300 transition-colors"
-          title="تحميل"
+          title={t("download")}
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -267,14 +273,18 @@ interface FullPlayerProps {
 }
 
 export function RecordingFullCard({ rec, showPresenter = false }: FullPlayerProps) {
+  const t = useTranslations("recordings");
+  const locale = useLocale();
+  const dateLocale = DATE_LOCALES[locale as Locale] || locale;
+
   const playUrl    = recordingPlayUrl(rec.localPath);
   const dlUrl      = recordingDownloadUrl(rec.localPath);
   const mimeType   = recordingMimeType(rec.localPath);
-  const dateStr    = formatArabicDate(rec.startedAt);
-  const timeStr    = formatArabicTime(rec.startedAt);
-  const endStr     = rec.endedAt ? formatArabicTime(rec.endedAt) : null;
-  const dur        = rec.durationSeconds != null ? formatDurationArabic(rec.durationSeconds) : null;
-  const size       = rec.bytesReceived   != null ? formatBytes(rec.bytesReceived) : null;
+  const dateStr    = formatDate(rec.startedAt, dateLocale);
+  const timeStr    = formatTime(rec.startedAt, dateLocale);
+  const endStr     = rec.endedAt ? formatTime(rec.endedAt, dateLocale) : null;
+  const dur        = rec.durationSeconds != null ? formatDuration(rec.durationSeconds, t) : null;
+  const size       = rec.bytesReceived   != null ? formatBytes(rec.bytesReceived, t) : null;
 
   return (
     <article className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-lg hover:border-neutral-700 transition-colors group">
@@ -311,7 +321,7 @@ export function RecordingFullCard({ rec, showPresenter = false }: FullPlayerProp
           {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
           <audio controls preload="none" className="w-full h-10 rounded-lg" style={{ colorScheme: "dark" }}>
             <source src={playUrl} type={mimeType} />
-            متصفحك لا يدعم تشغيل الصوت.
+            {t("browserNoAudio")}
           </audio>
         </div>
 
@@ -327,7 +337,7 @@ export function RecordingFullCard({ rec, showPresenter = false }: FullPlayerProp
               <polyline points="7 10 12 15 17 10"/>
               <line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
-            تحميل
+            {t("download")}
           </a>
           <a
             href={playUrl}
@@ -340,7 +350,7 @@ export function RecordingFullCard({ rec, showPresenter = false }: FullPlayerProp
               <polyline points="15 3 21 3 21 9"/>
               <line x1="10" y1="14" x2="21" y2="3"/>
             </svg>
-            فتح في نافذة جديدة
+            {t("openInNewWindow")}
           </a>
         </div>
       </div>
@@ -360,8 +370,9 @@ interface CompactListProps {
 export function RecordingCompactList({
   recordings,
   showPresenter = false,
-  emptyMessage  = "لا توجد تسجيلات بعد",
+  emptyMessage,
 }: CompactListProps) {
+  const t = useTranslations("recordings");
   const audioRef               = useRef<HTMLAudioElement | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
 
@@ -369,7 +380,7 @@ export function RecordingCompactList({
   useEffect(() => () => { audioRef.current?.pause(); }, []);
 
   if (recordings.length === 0) {
-    return <p className="text-xs text-neutral-600 text-center py-5 px-4">{emptyMessage}</p>;
+    return <p className="text-xs text-neutral-600 text-center py-5 px-4">{emptyMessage ?? t("noRecordingsYet")}</p>;
   }
 
   return (

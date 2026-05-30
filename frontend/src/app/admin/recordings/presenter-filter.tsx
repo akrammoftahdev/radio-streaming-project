@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
 import { MultiSmartSelect } from "@/components/ui/MultiSmartSelect";
 import type { MultiSmartSelectOption } from "@/components/ui/MultiSmartSelect";
+import { useTranslations } from 'next-intl';
 
 type Presenter = { id: string; name: string | null; username: string };
 
@@ -18,6 +19,7 @@ export function AdminRecordingsPresenterFilter({
 }) {
   const router          = useRouter();
   const searchParamsUrl = useSearchParams();
+  const t = useTranslations('admin.recordings');
   const [selectedIds, setSelectedIds] = useState<string[]>(initialSelectedIds);
 
   // Sync from URL when navigating externally
@@ -45,7 +47,7 @@ export function AdminRecordingsPresenterFilter({
         setSelectedIds(ids);
         applyFilter(ids);
       }}
-      placeholder="المذيعون"
+      placeholder={t('presentersPlaceholder')}
     />
   );
 }

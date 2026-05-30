@@ -18,11 +18,25 @@ export function roleHomePath(role: AppRole): string {
   }
 }
 
-export function roleLabel(role: AppRole): string {
+/**
+ * Returns a translated label for a role.
+ * Accepts a translation function `t` scoped to the 'roles' namespace.
+ * Usage: roleLabel(role, t) where t = useTranslations('roles') or await getTranslations('roles')
+ */
+export function roleLabel(role: AppRole, t?: (key: string) => string): string {
+  if (t) {
+    switch (role) {
+      case "ADMIN":           return t("ADMIN");
+      case "STATION_MANAGER": return t("STATION_MANAGER");
+      case "PRESENTER":       return t("PRESENTER");
+      default:                return role ?? t("PRESENTER");
+    }
+  }
+  // Fallback without translation function (e.g. server actions without i18n context)
   switch (role) {
-    case "ADMIN":           return "مدير النظام";
-    case "STATION_MANAGER": return "مدير محطة";
-    case "PRESENTER":       return "مذيع";
-    default:                return role ?? "مستخدم";
+    case "ADMIN":           return "Admin";
+    case "STATION_MANAGER": return "Station Manager";
+    case "PRESENTER":       return "Presenter";
+    default:                return role ?? "User";
   }
 }

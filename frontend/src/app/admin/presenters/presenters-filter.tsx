@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { SearchFilter }        from "@/components/ui/SearchFilter";
 import { MultiSmartSelect }    from "@/components/ui/MultiSmartSelect";
 import { SegmentedFilter }     from "@/components/ui/SegmentedFilter";
@@ -29,6 +30,7 @@ export function AdminPresentersFilter({
 }) {
   const router = useRouter();
   const searchParamsUrl = useSearchParams();
+  const t = useTranslations('admin.presenters');
 
   const [q,          setQ]          = useState(initialQ);
   const [mode,       setMode]       = useState(initialMode     || "all");
@@ -103,7 +105,7 @@ export function AdminPresentersFilter({
 
   // Station options: "none" (غير مرتبط بمحطة) is a real selectable value
   const stationOptions: MultiSmartSelectOption[] = [
-    { value: "none", label: "غير مرتبط بمحطة" },
+    { value: "none", label: t('filterNotLinked') },
     ...allStations.map(s => ({ value: s.id, label: s.name })),
   ];
 
@@ -113,11 +115,11 @@ export function AdminPresentersFilter({
 
         {/* Search */}
         <div className="w-full">
-          <label className="block text-xs font-semibold text-neutral-400 mb-2 uppercase tracking-wider">بحث ذكي</label>
+          <label className="block text-xs font-semibold text-neutral-400 mb-2 uppercase tracking-wider">{t('smartSearch')}</label>
           <SearchFilter
             value={q}
             onChange={setQ}
-            placeholder="ابحث بالاسم، اسم المستخدم، الإيميل، أو الهاتف..."
+            placeholder={t('searchPlaceholder')}
           />
         </div>
 
@@ -126,14 +128,14 @@ export function AdminPresentersFilter({
 
           {/* Mode */}
           <div className="flex flex-col">
-            <label className="block text-xs font-semibold text-neutral-400 mb-2 uppercase tracking-wider">نوع الحساب</label>
+            <label className="block text-xs font-semibold text-neutral-400 mb-2 uppercase tracking-wider">{t('filterAccountType')}</label>
             <SegmentedFilter
               value={mode}
               options={[
-                { value: "all",            label: "الكل"           },
-                { value: "SINGLE_STATION", label: "محطة واحدة"     },
-                { value: "MULTI_STATION",  label: "متعدد المحطات" },
-                { value: "DIRECT_DJ",      label: "DJ مباشر"       },
+                { value: "all",            label: t('filterAll')            },
+                { value: "SINGLE_STATION", label: t('filterSingleStation')  },
+                { value: "MULTI_STATION",  label: t('filterMultiStation')   },
+                { value: "DIRECT_DJ",      label: t('filterDirectDj')       },
               ]}
               onChange={(val) => { setMode(val); applyFilters({ newMode: val }); }}
             />
@@ -141,13 +143,13 @@ export function AdminPresentersFilter({
 
           {/* Status */}
           <div className="flex flex-col">
-            <label className="block text-xs font-semibold text-neutral-400 mb-2 uppercase tracking-wider">الحالة</label>
+            <label className="block text-xs font-semibold text-neutral-400 mb-2 uppercase tracking-wider">{t('filterStatus')}</label>
             <SegmentedFilter
               value={status}
               options={[
-                { value: "all",      label: "الكل"    },
-                { value: "active",   label: "نشط"     },
-                { value: "inactive", label: "غير نشط" },
+                { value: "all",      label: t('filterAll')      },
+                { value: "active",   label: t('filterActive')   },
+                { value: "inactive", label: t('filterInactive') },
               ]}
               onChange={(val) => { setStatus(val); applyFilters({ newStatus: val }); }}
             />
@@ -155,7 +157,7 @@ export function AdminPresentersFilter({
 
           {/* Station — multi-select (stationIds param), includes special "none" option */}
           <div className="flex flex-col">
-            <label className="block text-xs font-semibold text-neutral-400 mb-2 uppercase tracking-wider">المحطة</label>
+            <label className="block text-xs font-semibold text-neutral-400 mb-2 uppercase tracking-wider">{t('filterStation')}</label>
             <MultiSmartSelect
               options={stationOptions}
               values={stationIds}
@@ -163,7 +165,7 @@ export function AdminPresentersFilter({
                 setStationIds(ids);
                 applyFilters({ newStationIds: ids });
               }}
-              placeholder="كل المحطات"
+              placeholder={t('filterAllStations')}
             />
           </div>
 
@@ -174,14 +176,14 @@ export function AdminPresentersFilter({
 
           {/* Sort */}
           <div className="flex flex-col">
-            <label className="block text-xs font-semibold text-neutral-400 mb-2 uppercase tracking-wider">ترتيب</label>
+            <label className="block text-xs font-semibold text-neutral-400 mb-2 uppercase tracking-wider">{t('filterSort')}</label>
             <SegmentedFilter
               value={sort}
               options={[
-                { value: "newest",   label: "الأحدث"           },
-                { value: "oldest",   label: "الأقدم"           },
-                { value: "name",     label: "الاسم أ-ي"        },
-                { value: "username", label: "اسم المستخدم أ-ي" },
+                { value: "newest",   label: t('filterNewest')     },
+                { value: "oldest",   label: t('filterOldest')     },
+                { value: "name",     label: t('filterNameAZ')     },
+                { value: "username", label: t('filterUsernameAZ') },
               ]}
               onChange={(val) => { setSort(val); applyFilters({ newSort: val }); }}
             />
@@ -189,15 +191,15 @@ export function AdminPresentersFilter({
 
           {/* Validity */}
           <div className="flex flex-col">
-            <label className="block text-xs font-semibold text-neutral-400 mb-2 uppercase tracking-wider">صلاحية الاشتراك</label>
+            <label className="block text-xs font-semibold text-neutral-400 mb-2 uppercase tracking-wider">{t('filterValidity')}</label>
             <SegmentedFilter
               value={validity}
               options={[
-                { value: "all",      label: "الكل"              },
-                { value: "valid",    label: "نشطة الآن"         },
-                { value: "expired",  label: "منتهية"            },
-                { value: "expiring", label: "تنتهي خلال 7 أيام" },
-                { value: "none",     label: "بدون صلاحية"       },
+                { value: "all",      label: t('filterAll')           },
+                { value: "valid",    label: t('filterValidNow')      },
+                { value: "expired",  label: t('filterExpired')       },
+                { value: "expiring", label: t('filterExpiring7Days') },
+                { value: "none",     label: t('filterNoValidity')    },
               ]}
               onChange={(val) => { setValidity(val); applyFilters({ newValidity: val }); }}
             />
@@ -210,7 +212,7 @@ export function AdminPresentersFilter({
       {/* Clear All */}
       {(searchParamsUrl.toString() !== "" && searchParamsUrl.toString() !== `pageSize=${pageSize}`) && (
         <div className="flex justify-start mt-5 pt-4 border-t border-neutral-800">
-          <ClearFiltersButton onClick={clearAll} label="مسح كل الفلاتر" />
+          <ClearFiltersButton onClick={clearAll} label={t('clearAllFilters')} />
         </div>
       )}
     </div>

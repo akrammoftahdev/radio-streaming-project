@@ -2,19 +2,18 @@ import { auth, prisma } from "@/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ScheduleFilterBar } from "./schedule-filter-bar";
+import { getTranslations, getLocale } from "next-intl/server";
+import { isRtl } from "@/i18n/config";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "جدول البث - الإدارة - EGONAIR" };
+
+export async function generateMetadata() {
+  const t = await getTranslations('admin.schedule');
+  return { title: `${t('title')} - EGONAIR` };
+}
 
 const DAY_ORDER = [6, 0, 1, 2, 3, 4, 5];
-const DAY_NAMES: Record<number, string> = {
-  0: "الأحد", 1: "الإثنين", 2: "الثلاثاء",
-  3: "الأربعاء", 4: "الخميس", 5: "الجمعة", 6: "السبت",
-};
-const RECURRENCE_LABELS: Record<string, string> = {
-  DAILY: "يومي", WEEKLY: "أسبوعي",
-  SELECTED_DAYS: "أيام مختارة", ONE_TIME: "مرة واحدة",
-};
+
 const RECURRENCE_COLORS: Record<string, string> = {
   DAILY:         "bg-violet-900/60 text-violet-300 border-violet-700/40",
   WEEKLY:        "bg-indigo-900/60 text-indigo-300 border-indigo-700/40",
@@ -44,6 +43,23 @@ export default async function AdminSchedulePage({
   if (!session?.user || (session.user as { role?: string }).role !== "ADMIN") {
     redirect("/login");
   }
+
+  const t = await getTranslations('admin.schedule');
+  const tc = await getTranslations('common');
+  const tn = await getTranslations('nav');
+  const td = await getTranslations('time.days');
+  const tr = await getTranslations('admin.schedule');
+  const locale = await getLocale();
+  const dir = isRtl(locale) ? 'rtl' : 'ltr';
+
+  const DAY_NAMES: Record<number, string> = {
+    0: td('sunday'), 1: td('monday'), 2: td('tuesday'),
+    3: td('wednesday'), 4: td('thursday'), 5: td('friday'), 6: td('saturday'),
+  };
+  const RECURRENCE_LABELS: Record<string, string> = {
+    DAILY: t('daily'), WEEKLY: t('weekly'),
+    SELECTED_DAYS: t('selectedDays'), ONE_TIME: t('oneTime'),
+  };
 
   const { stations: stationsParam = "", presenters: presentersParam = "", recurrence: recurrenceParam = "",
     timeFrom: timeFromParam = "", timeTo: timeToParam = "", weekOf: weekOfParam = "" } = await searchParams;
@@ -168,7 +184,7 @@ export default async function AdminSchedulePage({
               const dow = sd.getDay();
               dayEntries[dow].push({
                 ...base,
-                oneTimeDate: sd.toLocaleDateString("ar-EG", {
+                oneTimeDate: sd.toLocaleDateString(locale, {
                   timeZone: "Africa/Cairo", month: "short", day: "numeric",
                 }),
               });
@@ -203,8 +219,7 @@ export default async function AdminSchedulePage({
   const hasFilters = !!(filterStationIds.length || filterPresenterIds.length || (filterRecurrence && filterRecurrence !== "all") || filterTimeFrom || filterTimeTo);
 
   return (
-    <div dir="rtl" className="min-h-screen bg-neutral-950 text-neutral-100"
-      style={{ fontFamily: "'Cairo','Segoe UI',system-ui,sans-serif" }}>
+    <div dir={dir} className="min-h-screen bg-neutral-950 text-neutral-100">
 
       {/* ── Header ── */}
       <header className="bg-neutral-900 border-b border-neutral-800 sticky top-0 z-20 shadow-xl">
@@ -215,8 +230,8 @@ export default async function AdminSchedulePage({
               📅
             </div>
             <div>
-              <h1 className="text-base font-bold text-neutral-100 leading-tight">جدول البث الأسبوعي</h1>
-              <p className="text-xs text-neutral-500">عرض كل المحطات والبرامج · الأسبوع الحالي</p>
+              <h1 className="text-base font-bold text-neutral-100 leading-tight">{t('title')}</h1>
+              <p className="text-xs text-neutral-500">{t('headerSubtitle')}</p>
             </div>
           </div>
 
@@ -224,15 +239,15 @@ export default async function AdminSchedulePage({
           <div className="flex items-center gap-2 flex-wrap">
             <Link href="/admin/programs"
               className="flex items-center gap-1.5 text-xs font-medium text-indigo-400 hover:text-indigo-300 border border-indigo-700/40 hover:border-indigo-600/60 bg-indigo-950/30 hover:bg-indigo-950/50 rounded-lg px-3 py-2 transition-colors">
-              ⚙️ إدارة البرامج
+              ⚙️ {t('managePrograms')}
             </Link>
             <Link href="/admin/schedule/audit"
               className="flex items-center gap-1.5 text-xs font-medium text-amber-400 hover:text-amber-300 border border-amber-700/40 hover:border-amber-600/60 bg-amber-950/30 hover:bg-amber-950/50 rounded-lg px-3 py-2 transition-colors">
-              🔍 تدقيق الجداول
+              🔍 {t('audit')}
             </Link>
             <Link href="/admin"
               className="flex items-center gap-1.5 text-xs font-medium text-neutral-400 hover:text-neutral-200 border border-neutral-700 hover:border-neutral-600 bg-neutral-900 hover:bg-neutral-800 rounded-lg px-3 py-2 transition-colors">
-              ← اللوحة
+              ← {tn('adminDashboard')}
             </Link>
           </div>
         </div>
@@ -243,10 +258,10 @@ export default async function AdminSchedulePage({
         {/* ── Summary cards ── */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { label: "برامج معروضة",   value: filteredPrograms.length, icon: "📺", color: "text-violet-400" },
-            { label: "عدد الحصص",      value: totalSlots,              icon: "🕒", color: "text-indigo-400" },
-            { label: "محطات",          value: activeStations,          icon: "📡", color: "text-amber-400"  },
-            { label: "مذيعون",         value: activePresenters,        icon: "🎙️", color: "text-cyan-400"   },
+            { label: t('programsShown'),   value: filteredPrograms.length, icon: "📺", color: "text-violet-400" },
+            { label: t('slotsCount'),      value: totalSlots,              icon: "🕒", color: "text-indigo-400" },
+            { label: t('stationsLabel'),   value: activeStations,          icon: "📡", color: "text-amber-400"  },
+            { label: t('presentersLabel'), value: activePresenters,        icon: "🎙️", color: "text-cyan-400"   },
           ].map(({ label, value, icon, color }) => (
             <div key={label} className="bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 flex items-center gap-3">
               <span className="text-2xl">{icon}</span>
@@ -291,11 +306,11 @@ export default async function AdminSchedulePage({
                     <div className="flex items-center justify-center gap-1.5 mt-0.5">
                       {isToday && (
                         <span className="text-[9px] bg-violet-800/60 text-violet-300 border border-violet-600/40 px-1.5 py-0.5 rounded-full leading-none">
-                          اليوم
+                          {t('today')}
                         </span>
                       )}
                       <span className={`text-[10px] font-medium ${entryCount > 0 ? "text-neutral-400" : "text-neutral-700"}`}>
-                        {entryCount} حصة
+                        {entryCount} {t('slot')}
                       </span>
                     </div>
                   </div>
@@ -313,7 +328,7 @@ export default async function AdminSchedulePage({
                     className={`min-h-[320px] p-2 space-y-2 ${isToday ? "bg-violet-950/10" : ""}`}>
                     {entries.length === 0 ? (
                       <div className="h-full flex items-start justify-center pt-8">
-                        <p className="text-[11px] text-neutral-700 text-center">لا توجد<br />برامج</p>
+                        <p className="text-[11px] text-neutral-700 text-center">{t('noPrograms')}<br />{t('scheduled')}</p>
                       </div>
                     ) : (
                       entries.map((e, i) => (
@@ -358,7 +373,7 @@ export default async function AdminSchedulePage({
                           {/* Edit link — specific program */}
                           <Link href={`/admin/programs/${e.programId}/edit`}
                             className="text-[9px] text-neutral-600 hover:text-violet-400 border border-neutral-700/40 hover:border-violet-700/50 rounded px-1.5 py-0.5 transition-colors inline-block">
-                            تعديل ←
+                            {tc('edit')} ←
                           </Link>
                         </div>
                       ))
@@ -376,18 +391,18 @@ export default async function AdminSchedulePage({
           <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-16 text-center">
             <div className="text-5xl mb-4">📅</div>
             <p className="text-neutral-300 font-semibold text-lg mb-1">
-              {hasFilters ? "لا توجد برامج تطابق الفلتر المحدد." : "لا توجد برامج مجدولة حتى الآن."}
+              {hasFilters ? t('noProgramsMatchFilter') : t('noProgramsScheduled')}
             </p>
             <div className="flex items-center justify-center gap-3 mt-5 flex-wrap">
               {hasFilters && (
                 <Link href="/admin/schedule"
                   className="text-xs text-neutral-400 hover:text-neutral-200 border border-neutral-700 hover:border-neutral-600 rounded-lg px-4 py-2 transition-colors">
-                  مسح الفلاتر
+                  {t('clearFilters')}
                 </Link>
               )}
               <Link href="/admin/programs"
                 className="text-xs text-violet-400 hover:text-violet-300 border border-violet-700/30 hover:border-violet-600/50 rounded-lg px-4 py-2 transition-colors">
-                ⚙️ إدارة البرامج
+                ⚙️ {t('managePrograms')}
               </Link>
             </div>
           </div>

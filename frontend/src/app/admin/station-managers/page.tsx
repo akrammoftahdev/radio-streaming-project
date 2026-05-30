@@ -12,9 +12,14 @@ import {
 import { DeactivateManagerButton } from "./deactivate-button";
 import { ManagersFilterBar }       from "./managers-filter-bar";
 import { AdminPageShell } from "@/components/ui";
+import { getTranslations } from "next-intl/server";
 
 export const dynamic  = "force-dynamic";
-export const metadata = { title: "مديرو المحطات - EGONAIR" };
+
+export async function generateMetadata() {
+  const t = await getTranslations('admin.stationManagers');
+  return { title: `${t('title')} - EGONAIR` };
+}
 
 const PAGE_SIZE = 5;
 
@@ -28,6 +33,12 @@ export default async function StationManagersPage({
 }) {
   const session = await auth();
   if (!session || (session.user as any).role !== "ADMIN") redirect("/login");
+
+  const t = await getTranslations('admin.stationManagers');
+  const tc = await getTranslations('common');
+  const tn = await getTranslations('nav');
+  const tp = await getTranslations('admin.presenters');
+  const tpr = await getTranslations('profile');
 
   const { error, success, saved, edit: editId, q = "", stations: stationsParam = "", status = "all", page: pageParam = "1" } = await searchParams;
   const page       = Math.max(1, parseInt(pageParam, 10));
@@ -81,11 +92,11 @@ export default async function StationManagersPage({
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-slate-100 tracking-tight">مديرو المحطات</h1>
-            <p className="text-slate-400 text-sm mt-1">إدارة حسابات مديري المحطات وربطهم بالمحطات</p>
+            <h1 className="text-3xl font-bold text-slate-100 tracking-tight">{t('title')}</h1>
+            <p className="text-slate-400 text-sm mt-1">{t('subtitle')}</p>
           </div>
           <a href="/admin" className="text-sm text-slate-400 hover:text-slate-200 transition-colors">
-            ← لوحة الإدارة
+            {tn('backToAdmin')}
           </a>
         </div>
 
@@ -102,12 +113,12 @@ export default async function StationManagersPage({
         )}
         {saved === "deactivated" && (
           <div className="flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-5 py-4 text-emerald-400 text-sm">
-            <span>✅</span><span>تم تعطيل مدير المحطة بنجاح وإزالة صلاحياته من المحطات.</span>
+            <span>✅</span><span>{t('deactivatedSuccess')}</span>
           </div>
         )}
         {saved === "deleted" && (
           <div className="flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-5 py-4 text-emerald-400 text-sm">
-            <span>✅</span><span>تم حذف مدير المحطة بنجاح.</span>
+            <span>✅</span><span>{t('deletedSuccess')}</span>
           </div>
         )}
 
@@ -116,37 +127,37 @@ export default async function StationManagersPage({
         {/* ── Create new Station Manager ─────────────────────────────────────── */}
         <section className="bg-slate-800 border border-slate-700/50 rounded-2xl p-6 shadow-xl">
           <h2 className="text-base font-semibold text-slate-200 mb-4 flex items-center gap-2">
-            <span>👤</span> إنشاء حساب مدير محطة جديد
+            <span>👤</span> {t('createNewTitle')}
           </h2>
           <form action={createStationManagerUser} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-300">الاسم الكامل</label>
+                <label className="text-sm font-medium text-slate-300">{t('fullName')}</label>
                 <input name="name" type="text" placeholder="محمد أحمد" className={inp} />
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-300">اسم المستخدم <span className="text-red-400">*</span></label>
+                <label className="text-sm font-medium text-slate-300">{tp('username')} <span className="text-red-400">*</span></label>
                 <input name="username" type="text" required placeholder="manager_cairo" className={inp} dir="ltr" />
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-300">كلمة المرور <span className="text-red-400">*</span></label>
+                <label className="text-sm font-medium text-slate-300">{tp('password')} <span className="text-red-400">*</span></label>
                 <input name="password" type="password" required placeholder="••••••••" className={inp} dir="ltr" />
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-300">البريد الإلكتروني</label>
+                <label className="text-sm font-medium text-slate-300">{tp('email')}</label>
                 <input name="email" type="email" placeholder="manager@example.com" className={inp} dir="ltr" />
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-300">رقم الهاتف</label>
+                <label className="text-sm font-medium text-slate-300">{tp('phone')}</label>
                 <input name="phone" type="tel" placeholder="+201001234567" className={inp} dir="ltr" />
               </div>
             </div>
             <p className="text-xs text-amber-400/80">
-              ⚠️ حساب مدير المحطة لا يملك صلاحية البث الصوتي. يمكنه فقط إدارة المذيعين والبرامج في المحطات المسندة إليه.
+              ⚠️ {t('managerNoBroadcastNote')}
             </p>
             <button type="submit"
               className="px-6 py-2.5 bg-teal-600 hover:bg-teal-500 text-white font-medium rounded-xl transition-colors shadow-lg shadow-teal-500/20 text-sm">
-              إنشاء الحساب
+              {t('createAccount')}
             </button>
           </form>
         </section>
@@ -156,10 +167,10 @@ export default async function StationManagersPage({
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-widest">
               {isFiltered
-                ? `مديرو المحطات (${totalCount} نتيجة)`
-                : `مديرو المحطات (${totalCount})`}
+                ? `${t('title')} (${totalCount} ${t('result')})`
+                : `${t('title')} (${totalCount})`}
             </h2>
-            <span className="text-xs text-slate-500">صفحة {page} من {totalPages}</span>
+            <span className="text-xs text-slate-500">{t('pageOf', { page, totalPages })}</span>
 
           </div>
 
@@ -173,15 +184,15 @@ export default async function StationManagersPage({
               {isFiltered ? (
                 <>
                   <div className="text-4xl mb-3">🔍</div>
-                  <p className="text-slate-300 font-semibold mb-2">لا توجد نتائج مطابقة</p>
-                  <p className="text-slate-500 text-sm mb-4">جرّب تعديل التصفية أو البحث</p>
+                  <p className="text-slate-300 font-semibold mb-2">{t('noMatchingResults')}</p>
+                  <p className="text-slate-500 text-sm mb-4">{t('tryModifyFilter')}</p>
                   <a href="/admin/station-managers"
                     className="text-sm text-teal-400 hover:text-teal-300 border border-teal-500/30 hover:border-teal-500/60 rounded-lg px-4 py-2 transition-colors">
-                    مسح كل التصفية
+                    {t('clearAllFilters')}
                   </a>
                 </>
               ) : (
-                <p className="text-slate-500 text-sm">لا يوجد مديرو محطات بعد. أنشئ أول حساب أعلاه.</p>
+                <p className="text-slate-500 text-sm">{t('noManagers')}</p>
               )}
             </div>
           ) : (
@@ -209,7 +220,7 @@ export default async function StationManagersPage({
                           ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
                           : "bg-red-500/10 text-red-400 border border-red-500/20"
                       }`}>
-                        {mgr.isActive ? "نشط" : "معطّل"}
+                        {mgr.isActive ? tc('active') : tc('disabled')}
                       </span>
                     </div>
 
@@ -225,7 +236,7 @@ export default async function StationManagersPage({
                           ))}
                         </div>
                       ) : (
-                        <p className="text-xs text-slate-600 italic">لا توجد محطات مسندة بعد</p>
+                        <p className="text-xs text-slate-600 italic">{t('noStationsAssigned')}</p>
                       )}
                     </div>
 
@@ -240,7 +251,7 @@ export default async function StationManagersPage({
                             ? "text-slate-400 bg-slate-700/50 border-slate-600 hover:bg-slate-700"
                             : "text-teal-400 bg-teal-500/10 border-teal-500/20 hover:bg-teal-500/20"
                         }`}>
-                        {isEditing ? "إلغاء التعديل" : "تعديل"}
+                        {isEditing ? t('cancelEdit') : tc('edit')}
                       </Link>
                       <form action={toggleStationManagerActive} className="inline">
                         <input type="hidden" name="managerId" value={mgr.id} />
@@ -251,7 +262,7 @@ export default async function StationManagersPage({
                               ? "text-amber-400 bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/20"
                               : "text-emerald-400 bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/20"
                           }`}>
-                          {mgr.isActive ? "تعطيل" : "تفعيل"}
+                          {mgr.isActive ? t('deactivate') : t('activate')}
                         </button>
                       </form>
                       <form action={deleteStationManager} className="inline">
@@ -265,51 +276,51 @@ export default async function StationManagersPage({
                       <div className="space-y-4">
                         {/* Profile edit */}
                         <div className="bg-slate-900/50 border border-teal-500/20 rounded-xl p-4 space-y-3">
-                          <p className="text-xs font-semibold text-teal-400">✏️ تعديل بيانات المدير</p>
+                          <p className="text-xs font-semibold text-teal-400">✏️ {t('editManagerData')}</p>
                           <form action={updateStationManagerUser} className="space-y-3">
                             <input type="hidden" name="managerId" value={mgr.id} />
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                               <div className="space-y-1">
-                                <label className="text-xs font-medium text-slate-400">الاسم الكامل</label>
-                                <input name="name" type="text" defaultValue={mgr.name || ""} placeholder="الاسم الكامل" className={inpSm} />
+                                <label className="text-xs font-medium text-slate-400">{t('fullName')}</label>
+                                <input name="name" type="text" defaultValue={mgr.name || ""} placeholder={t('fullName')} className={inpSm} />
                               </div>
                               <div className="space-y-1">
-                                <label className="text-xs font-medium text-slate-400">اسم المستخدم <span className="text-red-400">*</span></label>
+                                <label className="text-xs font-medium text-slate-400">{tp('username')} <span className="text-red-400">*</span></label>
                                 <input name="username" type="text" required defaultValue={mgr.username} className={inpSm} dir="ltr" />
                               </div>
                               <div className="space-y-1">
-                                <label className="text-xs font-medium text-slate-400">البريد الإلكتروني</label>
+                                <label className="text-xs font-medium text-slate-400">{tp('email')}</label>
                                 <input name="email" type="email" defaultValue={mgr.email || ""} placeholder="email@example.com" className={inpSm} dir="ltr" />
                               </div>
                               <div className="space-y-1">
-                                <label className="text-xs font-medium text-slate-400">رقم الهاتف</label>
+                                <label className="text-xs font-medium text-slate-400">{tp('phone')}</label>
                                 <input name="phone" type="tel" defaultValue={mgr.phone || ""} placeholder="+201001234567" className={inpSm} dir="ltr" />
                               </div>
                             </div>
                             <button type="submit"
                               className="px-4 py-1.5 bg-teal-600 hover:bg-teal-500 text-white text-xs font-medium rounded-lg transition-colors">
-                              حفظ البيانات
+                              {t('saveData')}
                             </button>
                           </form>
 
                           {/* Password change */}
                           <div className="border-t border-slate-700/50 pt-3">
-                            <p className="text-xs font-semibold text-slate-400 mb-2">🔐 تغيير كلمة المرور</p>
+                            <p className="text-xs font-semibold text-slate-400 mb-2">🔐 {tpr('changePassword')}</p>
                             <form action={changeStationManagerPassword} className="space-y-3">
                               <input type="hidden" name="managerId" value={mgr.id} />
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div className="space-y-1">
-                                  <label className="text-xs font-medium text-slate-400">كلمة المرور الجديدة</label>
+                                  <label className="text-xs font-medium text-slate-400">{tpr('newPassword')}</label>
                                   <input name="newPassword" type="password" required minLength={6} placeholder="••••••••" className={inpSm} dir="ltr" />
                                 </div>
                                 <div className="space-y-1">
-                                  <label className="text-xs font-medium text-slate-400">تأكيد كلمة المرور</label>
+                                  <label className="text-xs font-medium text-slate-400">{tpr('confirmPassword')}</label>
                                   <input name="confirmPassword" type="password" required minLength={6} placeholder="••••••••" className={inpSm} dir="ltr" />
                                 </div>
                               </div>
                               <button type="submit"
                                 className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-medium rounded-lg transition-colors">
-                                تغيير كلمة المرور
+                                {tpr('changePassword')}
                               </button>
                             </form>
                           </div>
@@ -317,11 +328,11 @@ export default async function StationManagersPage({
 
                         {/* Station assignment */}
                         {allStations.length === 0 ? (
-                          <p className="text-xs text-slate-600">لا توجد محطات نشطة في النظام.</p>
+                          <p className="text-xs text-slate-600">{t('noActiveStations')}</p>
                         ) : (
                           <form action={updateStationManagerAssignments}>
                             <input type="hidden" name="managerId" value={mgr.id} />
-                            <p className="text-xs font-medium text-slate-400 mb-2">المحطات المسندة:</p>
+                            <p className="text-xs font-medium text-slate-400 mb-2">{t('assignedStations')}:</p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 mb-3">
                               {allStations.map(station => (
                                 <label key={station.id}
@@ -345,7 +356,7 @@ export default async function StationManagersPage({
                             </div>
                             <button type="submit"
                               className="px-4 py-1.5 bg-teal-600 hover:bg-teal-500 text-white text-xs font-medium rounded-lg transition-colors">
-                              حفظ الإسناد
+                              {t('saveAssignment')}
                             </button>
                           </form>
                         )}
@@ -363,10 +374,10 @@ export default async function StationManagersPage({
               <Link
                 href={`?${new URLSearchParams({ ...(q ? { q } : {}), ...(stationsParam ? { stations: stationsParam } : {}), ...(status !== "all" ? { status } : {}), page: String(page - 1) }).toString()}`}
                 className="text-xs border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-slate-200 rounded-lg px-4 py-2 transition-colors">
-                ← السابق
+                ← {t('previous')}
               </Link>
             ) : (
-              <span className="text-xs border border-slate-800/50 text-slate-700 rounded-lg px-4 py-2 cursor-not-allowed">← السابق</span>
+              <span className="text-xs border border-slate-800/50 text-slate-700 rounded-lg px-4 py-2 cursor-not-allowed">← {t('previous')}</span>
             )}
             <div className="flex items-center gap-1">
               {Array.from({ length: totalPages }, (_, i) => i + 1)
@@ -398,10 +409,10 @@ export default async function StationManagersPage({
               <Link
                 href={`?${new URLSearchParams({ ...(q ? { q } : {}), ...(stationsParam ? { stations: stationsParam } : {}), ...(status !== "all" ? { status } : {}), page: String(page + 1) }).toString()}`}
                 className="text-xs border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-slate-200 rounded-lg px-4 py-2 transition-colors">
-                التالي →
+                {t('next')} →
               </Link>
             ) : (
-              <span className="text-xs border border-slate-800/50 text-slate-700 rounded-lg px-4 py-2 cursor-not-allowed">التالي →</span>
+              <span className="text-xs border border-slate-800/50 text-slate-700 rounded-lg px-4 py-2 cursor-not-allowed">{t('next')} →</span>
             )}
           </div>
         </section>

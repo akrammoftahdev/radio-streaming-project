@@ -1,14 +1,18 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import LoginForm from "./login-form";
+import LanguageSwitcher from "@/components/ui/LanguageSwitcher";
 
 import { getSystemSettings, resolveLoginLogoUrl } from "@/lib/system-settings";
+import { getTranslations, getLocale } from "next-intl/server";
+import { isRtl } from '@/i18n/config';
 
 export async function generateMetadata() {
   const settings = await getSystemSettings();
+  const t = await getTranslations("auth");
   return {
-    title: `تسجيل الدخول — ${settings.systemName || "EGONAIR"} Remote Studio`,
-    description: settings.systemSubtitle || "ادخل إلى ستوديو البث الإذاعي عن بعد",
+    title: `${t("login")} — ${settings.systemName || "EGONAIR"} Remote Studio`,
+    description: settings.systemSubtitle || t("welcomeSubtitle"),
   };
 }
 
@@ -23,15 +27,22 @@ export default async function LoginPage() {
   
   const settings = await getSystemSettings();
   const systemName = settings.systemName || "EGONAIR";
-  const systemSubtitle = settings.systemSubtitle || "ستوديو البث الإذاعي عن بعد";
+  const systemSubtitle = settings.systemSubtitle || "";
   const logoUrl = resolveLoginLogoUrl(settings, "dark");
+  const locale = await getLocale();
+  const dir = isRtl(locale) ? 'rtl' : 'ltr';
 
   return (
     <main
-      dir="rtl"
+      dir={dir}
       className="relative flex items-center justify-center min-h-screen overflow-hidden"
       style={{ background: "var(--eg-bg)", colorScheme: "dark" }}
     >
+      {/* ── Language Switcher (top-right) ──────────────────────────────────── */}
+      <div className="absolute top-4 right-4 z-20">
+        <LanguageSwitcher compact />
+      </div>
+
       {/* ── Ambient background glows ───────────────────────────────────────── */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         {/* Top-left glow */}
