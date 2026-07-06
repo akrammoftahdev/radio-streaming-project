@@ -3,8 +3,11 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useTranslations, useLocale } from 'next-intl';
+import { isRtl } from '@/i18n/config';
 import NoSleep from "nosleep.js";
 import DspPanel from "@/components/studio/DspPanel";
+import LanguageSwitcher from "@/components/ui/LanguageSwitcher";
 import { type DspParams, DEFAULT_DSP_PARAMS } from "@/lib/dsp-presets";
 
 type Track    = { id: string; title: string; fileUrl?: string };
@@ -21,6 +24,17 @@ type LocalFile = {
 };
 
 type LocalFilesMap = Record<MediaTab, LocalFile[]>;
+
+export type ListenerMessage = {
+  id: string;
+  name?: string;
+  senderName: string;
+  country: string | null;
+  phoneNumber: string | null;
+  email: string | null;
+  message: string;
+  createdAt: string;
+};
 
 // ── Group 4.6 — Audio Policy Layer ───────────────────────────────────────────
 
@@ -269,17 +283,26 @@ export default function StudioPage({
   scheduledStationId,
 }: Props) {
 
+  const t = useTranslations('studio');
+  const tc = useTranslations('common');
+  const locale = useLocale();
+  const dir = isRtl(locale) ? 'rtl' : 'ltr';
+
   const [isMicOpen, setIsMicOpen] = useState(false);
+  const [isGuestOnAir, setIsGuestOnAir] = useState(false);
+  const isVoiceLive = isMicOpen || isGuestOnAir;
   const [isConnected, setIsConnected] = useState(false);
   // Auto-disconnect message shown after session end watchdog fires
   const [autoDisconnectMsg, setAutoDisconnectMsg] = useState<string | null>(null);
   // Mobile responsive tab
-  type MobileTab = "mixer" | "library" | "queue" | "sfx";
+  type MobileTab = "mixer" | "library" | "queue" | "sfx" | "messages";
   const [mobileTab, setMobileTab] = useState<MobileTab>("mixer");
   // V2: multi-accordion (allows multiple categories open at once)
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   // V2: track which SFX are currently playing (for UI highlight)
   const [activeSfxIds, setActiveSfxIds] = useState<Set<string>>(new Set());
+  const [liveMessages, setLiveMessages] = useState<ListenerMessage[]>([]);
+  const [isMessagingEnabled, setIsMessagingEnabled] = useState<boolean>(true);
   const router = useRouter();
 
   // Stable ref for onExitStudio so the watchdog closure can call it without
@@ -314,11 +337,13 @@ export default function StudioPage({
   const localObjectUrlsRef = useRef<Set<string>>(new Set());
   // Group 4.6 — unified media queue (all types: BACKGROUND/SONG/BREAK/AD)
   const [mediaQueue, setMediaQueue] = useState<QueueItem[]>([]);
+  const [draggedQueueIndex, setDraggedQueueIndex] = useState<number | null>(null);
+  const [dragOverQueueIndex, setDragOverQueueIndex] = useState<number | null>(null);
   // Group 4.8 — Manual Playback Engine (Queue V2 Phase 2)
   const currentlyPlayingRef = useRef<HTMLAudioElement | null>(null);
   const bgAudioRef = useRef<HTMLAudioElement | null>(null);
   const [playingQueueId, setPlayingQueueId] = useState<string | null>(null);
-  const [bgVolume, setBgVolume] = useState<number>(0.5);
+  const [bgVolume, setBgVolume] = useState<number>(50);
   // Ducking ratio applied to background gain when mic is open.
   // 0.10 → fader 50% gives 5% background under mic; fader 100% gives 10%.
   const BG_DUCK_RATIO = 0.10;
@@ -326,13 +351,13 @@ export default function StudioPage({
   const QUEUE_CROSSFADE_SEC = 3;       // overlap duration in seconds
   const QUEUE_CROSSFADE_CHECK_MS = 500; // polling interval to detect near-end
 
-  const [queueVolume, setQueueVolume] = useState<number>(0.8);
+  const [queueVolume, setQueueVolume] = useState<number>(80);
   // Group 4.9 — Stable ref to latest mediaQueue for use inside audio callbacks
   const mediaQueueRef = useRef<QueueItem[]>([]);
   // Stable refs for background state — lets ws.onopen read current values without stale closure
   const activeBgTrackIdRef  = useRef<string | null>(null);
   const activeBgLocalUrlRef = useRef<string | null>(null);
-  const bgVolumeRef         = useRef<number>(0.5);
+  const bgVolumeRef         = useRef<number>(50);
   const [fadeMessage, setFadeMessage] = useState<string | null>(null);
   const [micError, setMicError] = useState<string | null>(null);
   const [volumeLevel, setVolumeLevel] = useState<number>(0);
@@ -350,6 +375,12 @@ export default function StudioPage({
   const [audioInputDevices, setAudioInputDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedMicDeviceId, setSelectedMicDeviceId] = useState<string>('');
   const [micDeviceError, setMicDeviceError] = useState<string | null>(null);
+  // Group 4.15 — Audio output device selector for monitoring
+  const [audioOutputDevices, setAudioOutputDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedOutputDeviceId, setSelectedOutputDeviceId] = useState<string>('default');
+  // Group 4.16 — Tab Audio Capture (Guest Audio)
+  const [isTabAudioActive, setIsTabAudioActive] = useState(false);
+  const [tabAudioVolume, setTabAudioVolume] = useState<number>(80);
   // Group 4.14 — Local mutable copies of presenter media categories (for optimistic upload append)
   const [localPresenterBreakCats, setLocalPresenterBreakCats] = useState<Category[]>(presenterBreakCategories);
   const [localPresenterAdCats,    setLocalPresenterAdCats]    = useState<Category[]>(presenterAdCategories);
@@ -385,8 +416,16 @@ export default function StudioPage({
   const pausedQueueItemRef  = useRef<QueueItem | null>(null);
   // RAF handle for progress polling
   const playbackRafRef = useRef<number | null>(null);
-  // Monitoring GainNode — connected to ctx.destination; gain=0 when OFF, 0.8 when ON
+  // Monitoring GainNode — routed through monitorDest → monitorAudio for device selection
   const monitorGainRef = useRef<GainNode | null>(null);
+  // Monitor output path: monitorGain → monitorDest → monitorAudio.setSinkId(deviceId)
+  const monitorDestRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+  const monitorAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Group 4.16 Refs
+  const tabAudioStreamRef = useRef<MediaStream | null>(null);
+  const tabAudioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const tabAudioGainRef   = useRef<GainNode | null>(null);
   // pendingRecordingReasonRef kept for backward safety — no longer drained (startSessionRecording
   // is called directly in ws.onopen; this ref is no longer written or read).
   const pendingRecordingReasonRef = useRef<'mic' | 'background' | 'queue' | null>(null);
@@ -478,73 +517,169 @@ export default function StudioPage({
     setVolumeLevel(0);
   }, []);
 
-  // Full broadcast teardown — called only on Disconnect or unmount
+  // ── ensureAudioMixer ────────────────────────────────────────────────────────
+  // Lazy-init AudioContext + mixerDest + keepalive + monitor.
+  // Called by queue playback, bg playback, toggleMonitoring, and toggleConnection.
+  // Safe to call multiple times — only creates if not yet initialised.
+  const ensureAudioMixer = useCallback(async () => {
+    let ctx = audioCtxRef.current;
+    if (!ctx) {
+      ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      audioCtxRef.current = ctx;
+    }
+    if (ctx.state === 'suspended') await ctx.resume();
+
+    if (!mixerDestRef.current) {
+      const mixerDest = ctx.createMediaStreamDestination();
+      mixerDestRef.current = mixerDest;
+
+      // Silent keepalive — keeps mixerDest stream alive when all sources are silent
+      const keepalive = ctx.createConstantSource();
+      keepalive.offset.value = 0;
+      const keepaliveGain = ctx.createGain();
+      keepaliveGain.gain.value = 0;
+      keepalive.connect(keepaliveGain);
+      keepaliveGain.connect(mixerDest);
+      keepalive.start();
+      keepaliveRef.current = keepalive;
+
+      // Monitoring: monitorGain → monitorDest → monitorAudio.setSinkId(deviceId)
+      const monitorGain = ctx.createGain();
+      monitorGain.gain.value = isMonitoring ? monitorVolume : 0;
+      const monitorDest = ctx.createMediaStreamDestination();
+      monitorGain.connect(monitorDest);
+      monitorDestRef.current = monitorDest;
+      const monitorAudio = new Audio();
+      monitorAudio.srcObject = monitorDest.stream;
+      monitorAudio.play().catch(() => {});
+      monitorAudioRef.current = monitorAudio;
+      if (selectedOutputDeviceId && selectedOutputDeviceId !== 'default' && typeof (monitorAudio as any).setSinkId === 'function') {
+        (monitorAudio as any).setSinkId(selectedOutputDeviceId).catch(() => {});
+      }
+      monitorGainRef.current = monitorGain;
+
+      // Pre-create micGain so queue/bg can connect immediately
+      const micGain = ctx.createGain();
+      micGain.gain.value = 0; // mic not yet open — stays silent
+      micGainRef.current = micGain;
+      micGain.connect(mixerDest);
+
+      console.log('[ensureAudioMixer] Created AudioContext + mixer + monitor + micGain');
+    }
+    return { ctx, dest: mixerDestRef.current! };
+  }, [isMonitoring, monitorVolume, selectedOutputDeviceId]);
+
+  // Full broadcast teardown — tears down BROADCAST (WS, recorder, heartbeat, mic)
+  // but KEEPS AudioContext, mixer, monitor, bg, queue ALIVE for local use.
   const stopBroadcastSession = useCallback(() => {
     if (noSleepRef.current) noSleepRef.current.disable();
+    // ── Mic teardown ─────────────────────────────────────────────────────────
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
-    // ── Crossfade cleanup ──────────────────────────────────────────────────────
-    if (crossfadeTimerRef.current) { clearInterval(crossfadeTimerRef.current); crossfadeTimerRef.current = null; }
-    inCrossfadeRef.current = false;
-    if (outgoingPlayerRef.current) {
-      try { outgoingPlayerRef.current.audio.pause(); } catch {/* ignore */}
-      try { outgoingPlayerRef.current.gain.disconnect(); } catch {/* ignore */}
-      try { outgoingPlayerRef.current.source.disconnect(); } catch {/* ignore */}
-      outgoingPlayerRef.current = null;
-    }
-    // Stop the silent keepalive node first
-    try { keepaliveRef.current?.stop(); } catch {/* ignore */}
-    try { keepaliveRef.current?.disconnect(); } catch {/* ignore */}
-    keepaliveRef.current = null;
-    // Disconnect all mixer nodes before closing AudioContext
+    // Disconnect mic source from mixer (but keep micGain node alive for reconnect)
     try { micSourceRef.current?.disconnect(); } catch {/* ignore */}
-    try { micGainRef.current?.disconnect(); } catch {/* ignore */}
-    try { bgGainRef.current?.disconnect(); } catch {/* ignore */}
-    try { bgSourceRef.current?.disconnect(); } catch {/* ignore */}
-    try { queueGainRef.current?.disconnect(); } catch {/* ignore */}
-    try { queueSourceRef.current?.disconnect(); } catch {/* ignore */}
-    // ── SFX cleanup ───────────────────────────────────────────────────────────
-    activeSfxRef.current.forEach(s => { try { s.stop(); } catch {/* */} });
-    activeSfxRef.current.clear();
-    try { sfxGainRef.current?.disconnect(); } catch {/* ignore */}
-    sfxGainRef.current = null;
-    sfxBuffersRef.current.clear();
-    setSfxPreloadStatus('idle');
-    // ── DSP cleanup ───────────────────────────────────────────────────────────
+    micSourceRef.current = null;
+    // ── DSP cleanup (mic-only processing) ────────────────────────────────────
     cleanupDsp();
     setDspBypassed(false);
     setDspParams(DEFAULT_DSP_PARAMS);
-    // Reset monitoring gain to 0 before disconnecting
-    if (monitorGainRef.current) { monitorGainRef.current.gain.value = 0; }
-    try { monitorGainRef.current?.disconnect(); } catch {/* ignore */}
-    monitorGainRef.current = null;
-    setIsMonitoring(false);
-    micSourceRef.current   = null;
-    micGainRef.current     = null;
-    mixerDestRef.current   = null;
-    bgSourceRef.current    = null;
-    bgGainRef.current      = null;
-    queueSourceRef.current = null;
-    queueGainRef.current   = null;
-    if (audioCtxRef.current) { audioCtxRef.current.close(); audioCtxRef.current = null; }
+    // ── Broadcast teardown (WS, recorder, heartbeat) ─────────────────────────
     if (heartbeatRef.current) { clearInterval(heartbeatRef.current); heartbeatRef.current = null; }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       mediaRecorderRef.current.stop();
     }
     mediaRecorderRef.current = null;
     if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
+    // ── State updates ────────────────────────────────────────────────────────
     analyserRef.current = null;
     dataArrayRef.current = null;
     setVolumeLevel(0);
     setHeartbeatStatus("stopped");
     setAudioBackendStatus("disconnected");
     setShoutcastStatus('idle');
+    // NOTE: AudioContext, mixerDest, keepalive, monitor, bg, queue are KEPT ALIVE.
+    // The user can continue to play queue items and monitor locally after disconnect.
   }, []);
 
   // Legacy alias used by unmount cleanup effect
   const stopMicAudio = stopBroadcastSession;
 
+  const stopTabAudio = useCallback(() => {
+    if (tabAudioStreamRef.current) {
+      tabAudioStreamRef.current.getTracks().forEach(t => t.stop());
+      tabAudioStreamRef.current = null;
+    }
+    try { tabAudioSourceRef.current?.disconnect(); } catch {/* */}
+    try { tabAudioGainRef.current?.disconnect(); } catch {/* */}
+    tabAudioSourceRef.current = null;
+    tabAudioGainRef.current = null;
+    setIsTabAudioActive(false);
+    setIsGuestOnAir(false);
+  }, []);
+
+  const startTabAudio = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true
+      });
+
+      const hasAudio = stream.getAudioTracks().length > 0;
+      if (!hasAudio) {
+        stream.getTracks().forEach(t => t.stop());
+        setMicError(t('tabAudioHint') || "No audio track selected. Please check 'Share tab audio'.");
+        return;
+      }
+
+      stream.getVideoTracks()[0]?.addEventListener('ended', stopTabAudio);
+      stream.getAudioTracks()[0]?.addEventListener('ended', stopTabAudio);
+
+      const { ctx, dest } = await ensureAudioMixer();
+
+      const source = ctx.createMediaStreamSource(stream);
+      const gain = ctx.createGain();
+      gain.gain.value = tabAudioVolume / 100;
+      
+      source.connect(gain);
+      gain.connect(dest);
+      if (monitorGainRef.current) {
+        gain.connect(monitorGainRef.current);
+      }
+
+      tabAudioStreamRef.current = stream;
+      tabAudioSourceRef.current = source;
+      tabAudioGainRef.current = gain;
+      
+      setIsTabAudioActive(true);
+      setIsGuestOnAir(true);
+      showFadeMessage('Tab Audio Capture Started');
+      // Removed ensureRecordingStarted('tabAudio') here to avoid reference errors before it is defined,
+      // and it will be called safely after it's defined, or we can rely on keepalive/other triggers.
+    } catch (err: any) {
+      console.error('[TabAudio] Failed to start:', err);
+      if (err.name !== 'NotAllowedError') {
+        setMicError(err.message || 'Failed to capture tab audio');
+      }
+    }
+  }, [ensureAudioMixer, tabAudioVolume, stopTabAudio, t]);
+
+  useEffect(() => {
+    if (tabAudioGainRef.current) {
+      tabAudioGainRef.current.gain.value = isGuestOnAir ? (tabAudioVolume / 100) : 0;
+    }
+  }, [tabAudioVolume, isGuestOnAir]);
+
   // ── startSessionRecording ─────────────────────────────────────────────────
+function getFlagEmoji(countryCode: string | null) {
+  if (!countryCode || countryCode.length !== 2) return '';
+  const codePoints = countryCode
+    .toUpperCase()
+    .split('')
+    .map(char => 127397 + char.charCodeAt(0));
+  return String.fromCodePoint(...codePoints);
+}
+
+// ── Shared ────────────────────────────────────────────────────────────────────
   // Internal executor: creates + starts MediaRecorder on mixerDestination.stream.
   // Requires WS OPEN and mixerDest present. Does NOT handle the pending-reason
   // race — callers must check readiness before calling.
@@ -587,7 +722,7 @@ export default function StudioPage({
     recorder.ondataavailable = async (e) => {
       if (e.data && e.data.size > 0 && ws.readyState === WebSocket.OPEN) ws.send(e.data);
     };
-    recorder.start(1000);
+    recorder.start(250);
     console.log('[Recording] Started after real source:', reason);
   }, []);
 
@@ -650,7 +785,32 @@ export default function StudioPage({
   }, [isConnected]);
 
   // Clean up audio on unmount
-  useEffect(() => () => stopMicAudio(), [stopMicAudio]);
+  // Full cleanup on unmount (leaving studio page) — destroy EVERYTHING including AudioContext
+  useEffect(() => () => {
+    stopMicAudio(); // broadcast teardown
+    // Also destroy audio infrastructure on unmount
+    if (monitorGainRef.current) { monitorGainRef.current.gain.value = 0; }
+    try { monitorGainRef.current?.disconnect(); } catch {/* */}
+    if (monitorAudioRef.current) { monitorAudioRef.current.pause(); monitorAudioRef.current.srcObject = null; }
+    try { monitorDestRef.current?.disconnect(); } catch {/* */}
+    try { keepaliveRef.current?.stop(); } catch {/* */}
+    try { keepaliveRef.current?.disconnect(); } catch {/* */}
+    try { bgGainRef.current?.disconnect(); } catch {/* */}
+    try { bgSourceRef.current?.disconnect(); } catch {/* */}
+    try { queueGainRef.current?.disconnect(); } catch {/* */}
+    try { queueSourceRef.current?.disconnect(); } catch {/* */}
+    try { sfxGainRef.current?.disconnect(); } catch {/* */}
+    activeSfxRef.current.forEach(s => { try { s.stop(); } catch {/* */} });
+    
+    try { tabAudioGainRef.current?.disconnect(); } catch {/* */}
+    try { tabAudioSourceRef.current?.disconnect(); } catch {/* */}
+    if (tabAudioStreamRef.current) {
+      tabAudioStreamRef.current.getTracks().forEach(t => t.stop());
+      tabAudioStreamRef.current = null;
+    }
+
+    if (audioCtxRef.current) { audioCtxRef.current.close(); }
+  }, [stopMicAudio]);
 
 
   // Keep stable refs in sync with bg state (so ws.onopen closure reads current values)
@@ -712,7 +872,7 @@ export default function StudioPage({
   }, []);
 
   // Background audio — plays when activeBgTrackId (DB) or activeBgLocalUrl (device) changes.
-  // Audio routes directly to mixerDestination — never to local speakers unless monitoring is ON.
+  // Audio routes to mixerDestination — never to local speakers unless monitoring is ON.
   useEffect(() => {
     const bgSrcUrl = activeBgLocalUrl ?? (activeBgTrackId ? `/api/tracks/${activeBgTrackId}` : null);
     if (!bgSrcUrl) {
@@ -720,11 +880,12 @@ export default function StudioPage({
       return;
     }
     stopBackgroundAudio();
-    const ctx  = audioCtxRef.current;
-    const dest = mixerDestRef.current;
-    console.log('[DIAG][bg-effect] src:', bgSrcUrl, '| ctx:', !!ctx, '| dest:', !!dest);
 
-    if (ctx && dest) {
+    // Use async IIFE to call ensureAudioMixer (lazy-inits AudioContext if not connected yet)
+    (async () => {
+      const { ctx, dest } = await ensureAudioMixer();
+      console.log('[DIAG][bg-effect] src:', bgSrcUrl, '| ctx:', !!ctx, '| dest:', !!dest);
+
       const audio = new Audio(bgSrcUrl);
       audio.loop = true;
       bgAudioRef.current = audio;
@@ -736,25 +897,31 @@ export default function StudioPage({
         return;
       }
       const gain = ctx.createGain();
+      const queueActive = currentlyPlayingRef.current !== null;
       const micIsLive = micGainRef.current !== null && micGainRef.current.gain.value > 0;
-      gain.gain.value = micIsLive ? bgVolumeRef.current * BG_DUCK_RATIO : bgVolume;
+      gain.gain.value = queueActive ? 0 : micIsLive ? (bgVolumeRef.current / 100) * BG_DUCK_RATIO : bgVolume / 100;
       bgSrcNode.connect(gain);
       gain.connect(dest);
       if (monitorGainRef.current) gain.connect(monitorGainRef.current);
       bgSourceRef.current = bgSrcNode;
       bgGainRef.current   = gain;
-      audio.play()
-        .then(() => {
-          console.log('[DIAG][bg-effect] play OK — bg in mixer');
-          // ✔ Real audio source connected — start recording if not already started
-          ensureRecordingStarted('background');
-        })
-        .catch(err => console.error('[DIAG][bg-effect] play REJECTED:', err));
-    } else {
-      // NO_MIXER: Connect has not fired yet. The ws.onopen handler inside toggleConnection
-      // will wire any pre-selected bg into the mixer when WS opens.
-      console.log('[DIAG][bg-effect] NO_MIXER — ws.onopen will wire bg when Connect fires');
-    }
+
+      // Only start playback if no queue item is playing.
+      // When queue is active, bg stays paused — it will start when:
+      //   • mic opens (applyBgGain restores bg under voice)
+      //   • queue finishes (onended restores bg)
+      if (!queueActive) {
+        audio.play()
+          .then(() => {
+            console.log('[DIAG][bg-effect] play OK — bg in mixer');
+            ensureRecordingStarted('background');
+          })
+          .catch(err => console.error('[DIAG][bg-effect] play REJECTED:', err));
+      } else {
+        console.log('[DIAG][bg-effect] queue active — bg wired but NOT started (waiting for mic or queue end)');
+      }
+    })();
+
     return () => {
       if (bgAudioRef.current) { bgAudioRef.current.pause(); bgAudioRef.current.currentTime = 0; }
     };
@@ -769,22 +936,22 @@ export default function StudioPage({
   //   otherwise      → gain = vol
   // NEVER touches micGainRef, queueGainRef, or monitorGainRef.
   const applyBgGain = useCallback((reason: string, volumeOverride?: number) => {
-    const vol = volumeOverride !== undefined ? volumeOverride : bgVolumeRef.current;
+    const vol = (volumeOverride !== undefined ? volumeOverride : bgVolumeRef.current) / 100;
     const queueActive = currentlyPlayingRef.current !== null;
     const target = queueActive
       ? 0
-      : isMicOpen
+      : isVoiceLive
         ? vol * BG_DUCK_RATIO
         : vol;
     if (bgGainRef.current) {
       bgGainRef.current.gain.value = target;
     } else if (bgAudioRef.current && !queueActive) {
       // Fallback for pre-connect playback (no AudioContext yet)
-      bgAudioRef.current.volume = isMicOpen ? vol * BG_DUCK_RATIO : vol;
+      bgAudioRef.current.volume = isVoiceLive ? vol * BG_DUCK_RATIO : vol;
     }
-    console.log(`[BgGain] reason=${reason} override=${volumeOverride?.toFixed(2)??'ref'} queueActive=${queueActive} micOpen=${isMicOpen} vol=${vol.toFixed(2)} → gain=${target.toFixed(2)}`);
+    console.log(`[BgGain] reason=${reason} override=${volumeOverride?.toFixed(2)??'ref'} queueActive=${queueActive} micOpen=${isVoiceLive} vol=${vol.toFixed(2)} → gain=${target.toFixed(2)}`);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMicOpen]); // bgVolumeRef is a ref — always current without being a dep
+  }, [isVoiceLive]); // bgVolumeRef is a ref — always current without being a dep
 
   // Background fader effect — safety net in case direct onChange call is missed
   useEffect(() => {
@@ -794,9 +961,9 @@ export default function StudioPage({
   // Background ducking — mic open/close applies same formula
   useEffect(() => {
     applyBgGain('mic-toggle');
-  // applyBgGain is stable on isMicOpen changes; bgVolumeRef always current
+  // applyBgGain is stable on isVoiceLive changes; bgVolumeRef always current
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMicOpen]);
+  }, [isVoiceLive]);
 
   // ── fadeGain ────────────────────────────────────────────────────────────────
   // Smooth linear ramp on any Web Audio GainNode.
@@ -889,7 +1056,7 @@ export default function StudioPage({
     // Background tracks use activeBgTrackId, not the queue
     if (mediaType === "BACKGROUND") return;
     const policy = MEDIA_POLICY[mediaType];
-    const status: QueueStatus = isMicOpen
+    const status: QueueStatus = isVoiceLive
       ? (policy.canSelectWhileMicOpen ? "READY_AFTER_MIC_CLOSE" : "BLOCKED_WHILE_MIC_OPEN")
       : "READY";
     if (status === "BLOCKED_WHILE_MIC_OPEN") return;
@@ -899,7 +1066,7 @@ export default function StudioPage({
       const item: QueueItem = { id: crypto.randomUUID(), trackId, title, mediaType, sourceType, status, ownerType, objectUrl, fileUrl };
       return [...prev, item];
     });
-  }, [isMicOpen]);
+  }, [isVoiceLive]);
 
   // Group 4.6 — Remove single item from queue
   const removeQueueItem = useCallback((queueId: string) => {
@@ -908,6 +1075,25 @@ export default function StudioPage({
 
   // Group 4.6 — Clear entire queue
   const clearQueue = useCallback(() => { setMediaQueue([]); }, []);
+
+  // Fetch initial messaging state
+  useEffect(() => {
+    const fetchMessagingState = async () => {
+      const currentStationId = scheduledStationId;
+      if (!currentStationId) return;
+      try {
+        const res = await fetch(`/api/studio/station/${currentStationId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setIsMessagingEnabled(data.isMessagingEnabled ?? true);
+        }
+      } catch (e) {
+        console.error("Failed to fetch messaging state", e);
+      }
+    };
+    fetchMessagingState();
+  }, [scheduledStationId]);
+
 
   // Group 4.6 — Move item up or down in queue (Queue V2 reorder)
   const moveQueueItem = useCallback((queueId: string, direction: "up" | "down") => {
@@ -923,6 +1109,81 @@ export default function StudioPage({
     });
   }, []);
 
+  const handleDragStart = useCallback((e: React.DragEvent, idx: number) => {
+    setDraggedQueueIndex(idx);
+    e.dataTransfer.effectAllowed = 'move';
+    // Firefox requires some data to be set to enable dragging
+    e.dataTransfer.setData('text/plain', idx.toString());
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent, idx: number) => {
+    e.preventDefault();
+    if (dragOverQueueIndex !== idx) setDragOverQueueIndex(idx);
+  }, [dragOverQueueIndex]);
+
+  const handleDragLeave = useCallback(() => {
+    setDragOverQueueIndex(null);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent, dropIdx: number) => {
+    e.preventDefault();
+    if (draggedQueueIndex === null || draggedQueueIndex === dropIdx) {
+      setDraggedQueueIndex(null);
+      setDragOverQueueIndex(null);
+      return;
+    }
+    setMediaQueue(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(draggedQueueIndex, 1);
+      next.splice(dropIdx, 0, moved);
+      return next;
+    });
+    setDraggedQueueIndex(null);
+    setDragOverQueueIndex(null);
+  }, [draggedQueueIndex]);
+
+  // Mobile Touch Drag & Drop Logic
+  const [touchStartY, setTouchStartY] = useState<number | null>(null);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent, idx: number) => {
+    setDraggedQueueIndex(idx);
+    setDragOverQueueIndex(idx);
+    setTouchStartY(e.touches[0].clientY);
+    document.body.style.overflow = 'hidden';
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (draggedQueueIndex === null || touchStartY === null) return;
+    
+    const currentY = e.touches[0].clientY;
+    const deltaY = currentY - touchStartY;
+    // Assuming each queue item is ~70px on mobile
+    const steps = Math.round(deltaY / 70);
+    
+    let newDragOverIndex = draggedQueueIndex + steps;
+    newDragOverIndex = Math.max(0, Math.min(newDragOverIndex, mediaQueue.length - 1));
+    
+    if (newDragOverIndex !== dragOverQueueIndex) {
+      setDragOverQueueIndex(newDragOverIndex);
+    }
+  }, [draggedQueueIndex, touchStartY, dragOverQueueIndex, mediaQueue.length]);
+
+  const handleTouchEnd = useCallback(() => {
+    document.body.style.overflow = '';
+    
+    if (draggedQueueIndex !== null && dragOverQueueIndex !== null && draggedQueueIndex !== dragOverQueueIndex) {
+      setMediaQueue(prev => {
+        const next = [...prev];
+        const [moved] = next.splice(draggedQueueIndex, 1);
+        next.splice(dragOverQueueIndex, 0, moved);
+        return next;
+      });
+    }
+    setDraggedQueueIndex(null);
+    setDragOverQueueIndex(null);
+    setTouchStartY(null);
+  }, [draggedQueueIndex, dragOverQueueIndex]);
+
   // Group 4.6 / 4.10 — Mic-priority queue management
   //
   // Mic OPENS:
@@ -935,23 +1196,32 @@ export default function StudioPage({
   //   2. If a queue item was paused for mic, resume it.
   //   3. Otherwise auto-start the first READY item if nothing is playing.
   useEffect(() => {
-    if (isMicOpen) {
+    if (isVoiceLive) {
       // ── MIC OPENED: pause any playing queue audio immediately ──────────────
       if (currentlyPlayingRef.current) {
+        const pausedAudio = currentlyPlayingRef.current;
         // Ramp queue gain to 0 first (instant silence in broadcast)
         if (queueGainRef.current) {
           queueGainRef.current.gain.value = 0;
         }
-        currentlyPlayingRef.current.pause();
+        pausedAudio.pause();
+        currentlyPlayingRef.current = null; // clear BEFORE applyBgGain so it doesn't see queue as active
         // Find which queue item this audio belongs to
         const currentId = playingQueueId;
         const pausedItem = currentId
           ? mediaQueueRef.current.find(q => q.id === currentId) ?? null
           : null;
         pausedForMicRef.current = pausedItem;
+        // Store audio element for resume on mic-close (currentlyPlayingRef is now null)
+        pausedQueueAudioRef.current = pausedAudio;
+        if (pausedItem) pausedQueueItemRef.current = pausedItem;
         console.log('[DIAG][mic-priority] Queue paused for mic open. Item:', pausedItem?.title ?? 'unknown');
         // Restore background under mic (ducked proportionally to fader) — queue is now paused
         applyBgGain('mic-open-queue-paused');
+        // Start bg audio if it was wired but not playing (deferred while queue was active)
+        if (bgAudioRef.current && bgAudioRef.current.paused && bgGainRef.current) {
+          bgAudioRef.current.play().catch(() => {});
+        }
         // Do NOT call stopQueuePlayback() — we want to resume later
         setPlayingQueueId(null);
 
@@ -972,7 +1242,8 @@ export default function StudioPage({
 
       if (paused) {
         // Resume the item that was paused when mic opened.
-        // playQueueItem will mute background automatically.
+        // pausedQueueAudioRef and pausedQueueItemRef were already set on mic-open,
+        // so playQueueItem will take the RESUME path (continues from current position).
         console.log('[DIAG][mic-priority] Resuming paused item after mic close:', paused.title);
         setTimeout(() => playQueueItem(paused), 80);
       } else if (!currentlyPlayingRef.current) {
@@ -990,7 +1261,7 @@ export default function StudioPage({
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMicOpen]);
+  }, [isVoiceLive]);
 
   // Group 4.9 — Keep mediaQueueRef in sync with mediaQueue state
   useEffect(() => {
@@ -1009,7 +1280,7 @@ export default function StudioPage({
   }, []);
 
   // Group 4.8/4.9 — Play a queue item (stops any current playback first)
-  const playQueueItem = useCallback((item: QueueItem) => {
+  const playQueueItem = useCallback(async (item: QueueItem) => {
     // Cancel any existing RAF loop first
     if (playbackRafRef.current) { cancelAnimationFrame(playbackRafRef.current); playbackRafRef.current = null; }
 
@@ -1024,18 +1295,30 @@ export default function StudioPage({
       currentlyPlayingRef.current = audio;
       setPlayingQueueId(item.id);
       setIsPaused(false);
-      // Re-connect qGain if ctx still alive
-      const ctx  = audioCtxRef.current;
-      const dest = mixerDestRef.current;
-      if (ctx && dest && !queueGainRef.current) {
-        // qSrc was already created — qGain may still be connected; just restore gain value
-        if (queueGainRef.current) {
-          (queueGainRef.current as GainNode).gain.value = queueVolume;
-        }
+
+      // ── Crossfade: fade bg out + queue in over 3 seconds ──────────────
+      // Set queue gain to 0 first, then fade up after play starts
+      if (queueGainRef.current) {
+        queueGainRef.current.gain.value = 0;
       }
+      // Fade background out over 3 seconds
+      if (bgGainRef.current) {
+        fadeGain(bgGainRef.current, 0, 3, 'bg→queue-resume crossfade-out');
+        // Pause bg audio after crossfade completes (truly stop, not just mute)
+        setTimeout(() => {
+          if (bgAudioRef.current && currentlyPlayingRef.current) {
+            bgAudioRef.current.pause();
+          }
+        }, 3200);
+      }
+
       audio.play()
         .then(() => {
           console.log('[DIAG][queue] resume play: RESOLVED');
+          // Fade queue in over 3 seconds
+          if (queueGainRef.current) {
+            fadeGain(queueGainRef.current, queueVolume / 100, 3, 'queue-resume crossfade-in');
+          }
           // Re-start RAF loop
           const tick = () => {
             if (!currentlyPlayingRef.current) return;
@@ -1074,12 +1357,10 @@ export default function StudioPage({
       bgAudioRef.current.volume = 0; // fallback: instant silence
     }
     // ─────────────────────────────────────────────────────────────────────────
-    // Connect to Web Audio mixer if active, otherwise fall back to audio.volume
-    const ctx  = audioCtxRef.current;
-    const dest = mixerDestRef.current;
-    console.log('[DIAG][queue] ctx exists:', !!ctx, '| dest exists:', !!dest);
-    console.log('[DIAG][queue] branch:', (ctx && dest) ? 'MIXER' : 'NO_MIXER (audio.volume fallback — not on broadcast!)');
-    if (ctx && dest) {
+    // Ensure AudioContext + mixer exist (lazy-init if not connected yet)
+    const { ctx, dest } = await ensureAudioMixer();
+    console.log('[DIAG][queue] ctx exists:', !!ctx, '| dest exists:', !!dest, '| branch: MIXER');
+    {
       let qSrc: MediaElementAudioSourceNode;
       try {
         qSrc = ctx.createMediaElementSource(audio);
@@ -1094,7 +1375,7 @@ export default function StudioPage({
       // Start queue gain at 0 then fade up over 3 seconds (crossfade in)
       qGain.gain.value = 0;
       qSrc.connect(qGain);
-      qGain.connect(dest);              // → SHOUTcast broadcast only
+      qGain.connect(dest);              // → SHOUTcast broadcast (or just mixer when not connected)
       // → Also feed monitoring output if available
       if (monitorGainRef.current) {
         qGain.connect(monitorGainRef.current);
@@ -1103,13 +1384,6 @@ export default function StudioPage({
       queueSourceRef.current = qSrc;
       queueGainRef.current   = qGain;
       // Crossfade queue in after audio starts (inside .then())
-    } else {
-      // NO_MIXER: mixer not ready — do NOT play locally to avoid unwanted speaker output.
-      // Presenter must connect and open mic first to initialise the Web Audio mixer.
-      console.warn('[DIAG][queue] NO_MIXER — not playing locally. Connect and open mic first.');
-      currentlyPlayingRef.current = null;
-      setPlayingQueueId(null);
-      return;
     }
     // ── onended: safety-net for hard cut (crossfade didn't fire) ─────────────
     audio.onended = () => {
@@ -1149,8 +1423,12 @@ export default function StudioPage({
       setIsPaused(false);
       if (bgGainRef.current) {
         const isMicLive = micGainRef.current !== null && micGainRef.current.gain.value > 0;
-        const targetVol = isMicLive ? bgVolumeRef.current * BG_DUCK_RATIO : bgVolumeRef.current;
+        const targetVol = isMicLive ? (bgVolumeRef.current / 100) * BG_DUCK_RATIO : bgVolumeRef.current / 100;
         fadeGain(bgGainRef.current, targetVol, 2, 'queue→bg fade-in');
+        // Start bg audio if it was deferred (wired but paused while queue was active)
+        if (bgAudioRef.current && bgAudioRef.current.paused) {
+          bgAudioRef.current.play().catch(() => {});
+        }
       } else {
         applyBgGain('queue-ended-no-next');
       }
@@ -1171,7 +1449,7 @@ export default function StudioPage({
         ensureRecordingStarted('queue');
         // Fade queue gain up over 3 seconds now that audio is actually playing
         if (queueGainRef.current) {
-          fadeGain(queueGainRef.current, queueVolume, 3, 'queue fade-in');
+          fadeGain(queueGainRef.current, queueVolume / 100, 3, 'queue fade-in');
         }
         // Start RAF loop for progress tracking
         const tick = () => {
@@ -1244,7 +1522,7 @@ export default function StudioPage({
               nextAudio.play()
                 .then(() => {
                   console.log('[Crossfade] Track B playing — fading in');
-                  fadeGain(nextGain, queueVolume, QUEUE_CROSSFADE_SEC, 'crossfade: B fade-in');
+                  fadeGain(nextGain, queueVolume / 100, QUEUE_CROSSFADE_SEC, 'crossfade: B fade-in');
                   // Restart RAF for new track
                   if (playbackRafRef.current) cancelAnimationFrame(playbackRafRef.current);
                   const tickB = () => {
@@ -1290,7 +1568,7 @@ export default function StudioPage({
                 setPlayingQueueId(null); setPlaybackProgress(null); setIsPaused(false);
                 if (bgGainRef.current) {
                   const isMicLive = micGainRef.current !== null && micGainRef.current.gain.value > 0;
-                  const tv = isMicLive ? bgVolumeRef.current * BG_DUCK_RATIO : bgVolumeRef.current;
+                  const tv = isMicLive ? (bgVolumeRef.current / 100) * BG_DUCK_RATIO : bgVolumeRef.current / 100;
                   fadeGain(bgGainRef.current, tv, 2, 'queue→bg fade-in (after crossfade chain)');
                 } else { applyBgGain('queue-ended-crossfade-chain'); }
               };
@@ -1359,9 +1637,9 @@ export default function StudioPage({
   // Queue volume — live-sync slider (GainNode when mixer active, else audio.volume)
   useEffect(() => {
     if (queueGainRef.current) {
-      queueGainRef.current.gain.value = queueVolume;
+      queueGainRef.current.gain.value = queueVolume / 100;
     } else if (currentlyPlayingRef.current) {
-      currentlyPlayingRef.current.volume = queueVolume;
+      currentlyPlayingRef.current.volume = queueVolume / 100;
     }
   }, [queueVolume]);
 
@@ -1391,9 +1669,13 @@ export default function StudioPage({
     // Fade background back in over 2 seconds after manual stop
     if (bgGainRef.current) {
       const isMicLive = micGainRef.current !== null && micGainRef.current.gain.value > 0;
-      const targetVol = isMicLive ? bgVolumeRef.current * BG_DUCK_RATIO : bgVolumeRef.current;
+      const targetVol = isMicLive ? (bgVolumeRef.current / 100) * BG_DUCK_RATIO : bgVolumeRef.current / 100;
 
       fadeGain(bgGainRef.current, targetVol, 2, 'queue-stop bg-restore');
+      // Start bg audio if it was deferred (wired but paused while queue was active)
+      if (bgAudioRef.current && bgAudioRef.current.paused) {
+        bgAudioRef.current.play().catch(() => {});
+      }
     } else {
       applyBgGain('queue-stop'); // fallback when no AudioContext
     }
@@ -1784,19 +2066,58 @@ export default function StudioPage({
     setIsPaused(true);
   }, [playingQueueId]);
 
-  // Toggle presenter headphone monitoring
-  const toggleMonitoring = useCallback(() => {
+  // Toggle presenter headphone monitoring — works even before connecting
+  const toggleMonitoring = useCallback(async () => {
+    // Ensure AudioContext + mixer + monitor exist (lazy-init on first click)
     if (!monitorGainRef.current) {
-      console.warn('[DIAG][monitoring] monitorGainRef not ready — connect first');
+      await ensureAudioMixer();
+    }
+    if (!monitorGainRef.current) {
+      console.warn('[DIAG][monitoring] monitorGainRef still not ready after ensureAudioMixer');
       return;
     }
+    // Also enumerate output devices on first monitoring toggle
+    refreshAudioOutputDevices();
     setIsMonitoring(prev => {
       const next = !prev;
       monitorGainRef.current!.gain.value = next ? monitorVolume : 0;
+      // Ensure the monitor <audio> element is playing (may have been paused or blocked by autoplay)
+      if (next && monitorAudioRef.current && monitorAudioRef.current.paused) {
+        monitorAudioRef.current.play().catch(() => {});
+      }
       console.log('[DIAG][monitoring] Monitoring', next ? `ON (gain=${monitorVolume})` : 'OFF (gain=0)');
       return next;
     });
-  }, [monitorVolume]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monitorVolume, ensureAudioMixer]);
+
+  // Group 4.15 — Enumerate audio output devices
+  const refreshAudioOutputDevices = useCallback(async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const outputs = devices.filter(d => d.kind === 'audiooutput');
+      setAudioOutputDevices(outputs);
+      console.log('[DIAG][output-device] enumerated:', outputs.length, outputs.map(d => d.label));
+    } catch (e) {
+      console.warn('[DIAG][output-device] enumerateDevices failed:', e);
+    }
+  }, []);
+
+  // Group 4.15 — Switch monitor output device via setSinkId
+  const switchOutputDevice = useCallback(async (deviceId: string) => {
+    setSelectedOutputDeviceId(deviceId);
+    const audio = monitorAudioRef.current;
+    if (audio && typeof (audio as any).setSinkId === 'function') {
+      try {
+        await (audio as any).setSinkId(deviceId);
+        console.log('[DIAG][output-device] setSinkId OK:', deviceId);
+      } catch (e) {
+        console.error('[DIAG][output-device] setSinkId FAILED:', e);
+      }
+    } else {
+      console.warn('[DIAG][output-device] setSinkId not supported in this browser');
+    }
+  }, []);
 
   const getTrackTitle = (id: string | null, cats: Category[]) => {
     if (!id) return null;
@@ -1839,8 +2160,8 @@ export default function StudioPage({
     if (!ctx || !dest) { setSelectedMicDeviceId(deviceId); return; }
     try {
       const constraints = deviceId
-        ? { audio: { deviceId: { exact: deviceId } }, video: false }
-        : { audio: true, video: false };
+        ? { audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, deviceId: { exact: deviceId } }, video: false }
+        : { audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }, video: false };
       const newStream = await navigator.mediaDevices.getUserMedia(constraints);
       // Disconnect old mic nodes
       try { micSourceRef.current?.disconnect(); } catch {/* ignore */}
@@ -1865,7 +2186,7 @@ export default function StudioPage({
       console.log('[DIAG][mic-device] live switch OK → deviceId:', deviceId);
     } catch (e) {
       console.error('[DIAG][mic-device] live switch FAILED:', e);
-      setMicDeviceError('فشل التبديل. يرجى إغلاق الميك وإعادة فتحه.');
+      setMicDeviceError(t('mic.deviceSwitchFailed'));
     }
   }, [isMicOpen]);
 
@@ -1892,10 +2213,10 @@ export default function StudioPage({
     // Tracks not yet in queue
     const alreadyQueued = new Set(mediaQueue.filter(q => q.mediaType === "SONG").map(q => q.trackId));
     const available = cat.tracks.filter(t => !alreadyQueued.has(t.id));
-    if (available.length === 0) { showFadeMessage("جميع أغاني هذا القسم في قائمة الانتظار"); return; }
+    if (available.length === 0) { showFadeMessage(t('queue.allCategorySongsQueued')); return; }
     const random = available[Math.floor(Math.random() * available.length)];
     enqueueItem(random.id, random.title, "SONG", "ADMIN_DB", cat.ownerType as "ADMIN" | "PRESENTER");
-    showFadeMessage("تمت إضافة أغنية عشوائية لقائمة الانتظار");
+    showFadeMessage(t('queue.randomSongAdded'));
   };
 
   const startLevelMeter = (stream: MediaStream, existingCtx?: AudioContext) => {
@@ -1997,7 +2318,7 @@ export default function StudioPage({
         if (!ctx || !dest) {
           // Safety net: should not happen if toggleConnection ran correctly
           console.error('[toggleMic] BLOCKED — ctx or dest is null. audioCtxRef:', audioCtxRef.current, 'mixerDestRef:', mixerDestRef.current);
-          setMicError("المشغل غير مهيأ — يرجى قطع الاتصال وإعادة الاتصال.");
+          setMicError(t('mic.mixerNotReady'));
           return;
         }
 
@@ -2005,21 +2326,22 @@ export default function StudioPage({
 
         // Acquire mic stream
         const micConstraints: MediaStreamConstraints = selectedMicDeviceId
-          ? { audio: { deviceId: { exact: selectedMicDeviceId } }, video: false }
-          : { audio: true, video: false };
+          ? { audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, deviceId: { exact: selectedMicDeviceId } }, video: false }
+          : { audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }, video: false };
         let stream: MediaStream;
         try {
           stream = await navigator.mediaDevices.getUserMedia(micConstraints);
         } catch (micErr) {
           if (selectedMicDeviceId) {
             console.warn("[DIAG][mic-device] selected device failed, fallback:", micErr);
-            setMicDeviceError("الجهاز المحدد غير متاح — تم الرجوع للميكروفون الافتراضي.");
-            stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            setMicDeviceError(t('mic.deviceFallback'));
+            stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }, video: false });
             setSelectedMicDeviceId("");
           } else throw micErr;
         }
         streamRef.current = stream;
         refreshAudioInputDevices();
+        refreshAudioOutputDevices();
         startLevelMeter(stream, ctx);
 
         // Disconnect any stale mic source
@@ -2062,7 +2384,7 @@ export default function StudioPage({
             bgAudioRef.current = freshBgAudio;
             const bgSrc  = ctx.createMediaElementSource(freshBgAudio);
             const bgGain = ctx.createGain();
-            bgGain.gain.value = bgVolume;
+            bgGain.gain.value = bgVolume / 100;
             bgSrc.connect(bgGain);
             bgGain.connect(dest);
             if (monitorGainRef.current) bgGain.connect(monitorGainRef.current);
@@ -2073,10 +2395,10 @@ export default function StudioPage({
         }
 
         const readyCount = mediaQueue.filter(q => q.status === "READY").length;
-        if (readyCount > 0) showFadeMessage(`${readyCount} عنصر جاهز في قائمة الانتظار`);
+        if (readyCount > 0) showFadeMessage(t('queue.readyItemsCount', { count: readyCount }));
         setIsMicOpen(true);
       } catch {
-        setMicError("تعذّر الوصول للميكروفون. يرجى السماح بالصلاحية من إعدادات المتصفح وحاول مجدداً.");
+        setMicError(t('mic.accessDenied'));
       }
     }
   };
@@ -2094,43 +2416,14 @@ export default function StudioPage({
       setIsConnected(false);
       setShoutcastStatus('idle');
     } else {
-      // ── Connect: initialize mixer immediately so queue can play without mic ──
+      // ── Connect: use ensureAudioMixer to reuse or create audio infrastructure ──
+      setMicError(null); // Clear any stale disconnect/error messages
       try {
         if (noSleepRef.current) noSleepRef.current.enable();
-        // 1. AudioContext + mixer + keepalive + monitoring (DO THIS BEFORE AWAIT)
-        // Re-use existing context if available to prevent browser limits
-        const ctx = audioCtxRef.current ?? new (window.AudioContext || (window as any).webkitAudioContext)();
-        audioCtxRef.current = ctx;
-        if (ctx.state === "suspended") await ctx.resume();
+        // 1. AudioContext + mixer + keepalive + monitoring (reuse if already alive)
+        const { ctx, dest: mixerDest } = await ensureAudioMixer();
 
-        if (!mixerDestRef.current) {
-          const newMixerDest = ctx.createMediaStreamDestination();
-          mixerDestRef.current = newMixerDest;
-
-          // Silent keepalive — keeps mixerDest stream alive when mic + queue are both silent
-          const keepalive = ctx.createConstantSource();
-          keepalive.offset.value = 0;
-          const keepaliveGain = ctx.createGain();
-          keepaliveGain.gain.value = 0;
-          keepalive.connect(keepaliveGain);
-          keepaliveGain.connect(newMixerDest);
-          keepalive.start();
-          keepaliveRef.current = keepalive;
-
-          // Monitoring GainNode — gain=0 (OFF) by default; only bg/queue routed here
-          const monitorGain = ctx.createGain();
-          monitorGain.gain.value = 0;
-          monitorGain.connect(ctx.destination);
-          monitorGainRef.current = monitorGain;
-
-          // Pre-create micGain so queue playback can connect immediately
-          const micGain = ctx.createGain();
-          micGain.gain.value = 0; // mic not yet open — stays silent
-          micGainRef.current = micGain;
-          micGain.connect(newMixerDest);
-        }
-
-        const mixerDest = mixerDestRef.current;
+        const _ = mixerDest; // ensure lint doesn't complain
 
         // 2. Audio token (AFTER AudioContext is ready)
         let audioToken: string;
@@ -2149,7 +2442,7 @@ export default function StudioPage({
 
           // Catch NextAuth silent session redirects
           if (tokenRes.redirected || tokenRes.url.includes('/login')) {
-            setMicError("انتهت الجلسة. يرجى تسجيل الدخول مجدداً");
+            setMicError(t('connection.sessionExpired'));
             setTimeout(() => { window.location.href = '/login'; }, 1500);
             return;
           }
@@ -2160,7 +2453,7 @@ export default function StudioPage({
           audioToken = tokenData.token;
         } catch (tokenErr) {
           console.error("[Studio] Audio token failed on connect:", tokenErr);
-          setMicError("فشل الاتصال. يرجى المحاولة مرة أخرى.");
+          setMicError(t('connection.connectionFailed'));
           return;
         }
 
@@ -2196,19 +2489,17 @@ export default function StudioPage({
           setShoutcastStatus('ws_connected');
 
           // ── Wire pre-selected background into mixer ───────────────────────
-          // If the presenter selected a background track BEFORE Connect, the
-          // bg-effect ran while ctx/dest were null (NO_MIXER). Wire it now
-          // and call ensureRecordingStarted after play resolves.
+          // Only if bg is NOT already wired (e.g., first connect before bg-effect ran)
           const bgUrl = activeBgLocalUrlRef.current ?? (activeBgTrackIdRef.current ? `/api/tracks/${activeBgTrackIdRef.current}` : null);
-          console.log('[Studio][ws.onopen] pre-selected bgUrl:', bgUrl);
-          if (bgUrl && mixerDest && ctx) {
+          console.log('[Studio][ws.onopen] pre-selected bgUrl:', bgUrl, '| already wired:', !!bgSourceRef.current);
+          if (bgUrl && mixerDest && ctx && !bgSourceRef.current) {
             const audio = new Audio(bgUrl);
             audio.loop = true;
             bgAudioRef.current = audio;
             try {
               const bgSrc  = ctx.createMediaElementSource(audio);
               const bgGain = ctx.createGain();
-              bgGain.gain.value = bgVolumeRef.current;
+              bgGain.gain.value = bgVolumeRef.current / 100;
               bgSrc.connect(bgGain);
               bgGain.connect(mixerDest);
               if (monitorGainRef.current) bgGain.connect(monitorGainRef.current);
@@ -2234,6 +2525,19 @@ export default function StudioPage({
             startSessionRecording(pendingReason);
           }
 
+          // ── Always ensure recording is started if any audio source is active ──
+          // On reconnect, bg/queue may already be wired and playing from the previous
+          // session, but MediaRecorder was destroyed on disconnect. Kick it off now.
+          if (!mediaRecorderRef.current) {
+            if (bgSourceRef.current) {
+              console.log('[Studio][ws.onopen] bg already wired — starting recording for reconnect');
+              ensureRecordingStarted('background');
+            } else if (currentlyPlayingRef.current) {
+              console.log('[Studio][ws.onopen] queue already playing — starting recording for reconnect');
+              ensureRecordingStarted('queue');
+            }
+          }
+
           console.log('[Studio][ws.onopen] done — waiting for first real audio source to start recording');
         };
         // Handle JSON status messages from backend-audio
@@ -2249,7 +2553,13 @@ export default function StudioPage({
               case 'shoutcast_ok':      setShoutcastStatus('on_air');         break;
               case 'shoutcast_error':   setShoutcastStatus('radio_error');    break;
               case 'duplicate_attempt':
-                showFadeMessage("تنبيه: حاول جهاز آخر الاتصال بنفس الحساب الآن!");
+                showFadeMessage(t('connection.duplicateDeviceAlert'));
+                break;
+              case 'listener_message':
+              case 'new_listener_message':
+                const newMsg = msg.message as ListenerMessage;
+                setLiveMessages(prev => [newMsg, ...prev]);
+                showFadeMessage(`${t('LiveMessaging.sender')}: ${newMsg.name || newMsg.senderName}`);
                 break;
               default: break;
             }
@@ -2257,6 +2567,11 @@ export default function StudioPage({
         };
         ws.onclose = (event: CloseEvent) => {
           console.log('[Studio][ws.onclose] WS closed — code:', event.code, 'reason:', event.reason);
+          // Guard: if this is a stale WS (user already reconnected), ignore the close event
+          if (wsRef.current !== ws && wsRef.current !== null) {
+            console.log('[Studio][ws.onclose] Ignoring stale WS close — a new WS is already active');
+            return;
+          }
           setAudioBackendStatus("disconnected");
           setShoutcastStatus('idle');
           if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") mediaRecorderRef.current.stop();
@@ -2265,18 +2580,18 @@ export default function StudioPage({
           const reasonStr = (event.reason || "").toLowerCase();
           
           if (event.code === 1008 && reasonStr.includes("duplicate")) {
-            setMicError("جلسة مكررة — هذا المقدم متصل بالفعل من نافذة أخرى.");
+            setMicError(t('connection.duplicateSession'));
             setIsMicOpen(false);
             stopBroadcastSession();
             setIsConnected(false);
           } else if (event.code === 1001 || reasonStr.includes("stale") || reasonStr.includes("timeout") || reasonStr.includes("no audio")) {
-            setMicError("تم قطع الاتصال لأن الخادم لم يستقبل صوتاً.");
+            setMicError(t('connection.noAudioTimeout'));
             setIsMicOpen(false);
             stopBroadcastSession();
             setIsConnected(false);
           } else if (event.code !== 1000) {
             // Fallback for other unexpected closures to prevent UI from being stuck "connected"
-            const fallbackMsg = event.reason ? `انقطع الاتصال (${event.code}): ${event.reason}` : `انقطع الاتصال (رمز ${event.code})`;
+            const fallbackMsg = event.reason ? t('connection.disconnectionWithCodeReason', { code: event.code, reason: event.reason }) : t('connection.disconnectionWithCode', { code: event.code });
             setMicError(fallbackMsg);
             setIsMicOpen(false);
             stopBroadcastSession();
@@ -2287,7 +2602,7 @@ export default function StudioPage({
         startHeartbeat();
       } catch (e) {
         console.error("[Studio][connect] init error:", e);
-        setMicError("فشل الاتصال. يرجى المحاولة مرة أخرى.");
+        setMicError(t('connection.connectionFailed'));
         // If init failed, ensure isConnected stays false
         setIsConnected(false);
       }
@@ -2305,7 +2620,7 @@ export default function StudioPage({
       return;
     }
     enqueueItem(trackId, title, "SONG", "ADMIN_DB", ownerType);
-    showFadeMessage(isMicOpen ? "سيتم التشغيل بعد غلق المايك" : "تمت إضافة الأغنية لقائمة الانتظار");
+    showFadeMessage(isVoiceLive ? t('queue.willPlayAfterMic') : t('queue.addedToQueue'));
   };
 
   // Group 4.7-B — Enqueue a local session file into mediaQueue.
@@ -2318,8 +2633,8 @@ export default function StudioPage({
     // Prevent duplicates
     if (mediaQueue.some(q => q.trackId === file.id && q.mediaType === mediaType)) return;
     enqueueItem(file.id, file.name, mediaType, "LOCAL_SESSION", undefined, file.objectUrl);
-    showFadeMessage(isMicOpen ? "سيتم التشغيل بعد غلق المايك" : "تمت إضافة الملف لقائمة الانتظار");
-  }, [mediaQueue, enqueueItem, isMicOpen, showFadeMessage]);
+    showFadeMessage(isVoiceLive ? t('queue.willPlayAfterMic') : t('queue.addedFileToQueue'));
+  }, [mediaQueue, enqueueItem, isVoiceLive, showFadeMessage, t]);
 
   // Group 4.7-B — When a local file is removed, also remove its queue entry and revoke its URL
   const handleRemoveLocalFileWithQueueCleanup = useCallback((tab: MediaTab, fileId: string) => {
@@ -2330,7 +2645,7 @@ export default function StudioPage({
   }, [mediaQueue, removeQueueItem, handleRemoveLocalFile]);
 
   return (
-    <div dir="rtl" className="min-h-screen bg-[#0f0f1a] text-neutral-100 font-sans relative overflow-hidden">
+    <div dir={dir} className="min-h-screen bg-[#0f0f1a] text-neutral-100 font-sans relative overflow-hidden">
       {/* ── Global overlays ── */}
       {autoDisconnectMsg && (
         <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-full shadow-xl backdrop-blur-md font-bold text-sm text-center border animate-pulse ${
@@ -2356,45 +2671,46 @@ export default function StudioPage({
 
           {/* Right: Station name + ON AIR */}
           <div className="flex items-center gap-3">
-            <h1 className="text-lg font-bold bg-gradient-to-l from-indigo-400 to-cyan-400 bg-clip-text text-transparent hidden sm:block">استوديو البث</h1>
+            <h1 className="text-lg font-bold bg-gradient-to-l from-indigo-400 to-cyan-400 bg-clip-text text-transparent hidden sm:block">{t('title')}</h1>
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-900/80 border border-neutral-800">
-              <div className={`w-2 h-2 rounded-full ${isMicOpen ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)] animate-pulse' : 'bg-neutral-600'}`}></div>
-              <span className={`text-xs font-semibold tracking-wider ${isMicOpen ? 'text-red-400' : 'text-neutral-500'}`}>{isMicOpen ? "ON AIR" : "OFF AIR"}</span>
+              <div className={`w-2 h-2 rounded-full ${isVoiceLive ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)] animate-pulse' : 'bg-neutral-600'}`}></div>
+              <span className={`text-xs font-semibold tracking-wider ${isVoiceLive ? 'text-red-400' : 'text-neutral-500'}`}>{isVoiceLive ? "ON AIR" : "OFF AIR"}</span>
             </div>
             {/* Recording status */}
             {(shoutcastStatus === 'recording' || shoutcastStatus === 'on_air' || shoutcastStatus === 'radio_error' || shoutcastStatus === 'recording_only') && (
               <span className="text-[10px] text-cyan-400 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.7)]"></span>
-                تسجيل ●
+                {t('recording.badge')}
               </span>
             )}
           </div>
 
           {/* Center: Mic Button (compact in header) */}
-          <button onClick={toggleMic} disabled={!isConnected} className={`relative flex items-center justify-center w-14 h-14 lg:w-16 lg:h-16 rounded-full border-2 transition-all duration-500 flex-shrink-0 ${!isConnected ? 'border-neutral-800 bg-neutral-950/50 opacity-40 cursor-not-allowed' : isMicOpen ? 'border-red-500/60 bg-red-500/20 shadow-[0_0_30px_rgba(239,68,68,0.4)]' : 'border-neutral-700 bg-neutral-900/80 hover:bg-neutral-800 hover:border-neutral-600'}`}>
-            {isMicOpen && <div className="absolute inset-[-2px] rounded-full border-2 border-red-500 opacity-20 animate-ping pointer-events-none"></div>}
-            <svg xmlns="http://www.w3.org/2000/svg" className={`w-6 h-6 lg:w-7 lg:h-7 ${!isConnected ? 'text-neutral-600' : isMicOpen ? 'text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.6)]' : 'text-neutral-400'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              {isMicOpen ? (<><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line></>) : (<><line x1="2" x2="22" y1="2" y2="22"></line><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"></path><path d="M5 10v2a7 7 0 0 0 12 5"></path><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"></path><path d="M9 9v3a3 3 0 0 0 5.12 2.12"></path><line x1="12" x2="12" y1="19" y2="22"></line></>)}
+          <button onClick={toggleMic} disabled={!isConnected} className={`relative flex items-center justify-center w-14 h-14 lg:w-16 lg:h-16 rounded-full border-2 transition-all duration-500 flex-shrink-0 ${!isConnected ? 'border-neutral-800 bg-neutral-950/50 opacity-40 cursor-not-allowed' : isVoiceLive ? 'border-red-500/60 bg-red-500/20 shadow-[0_0_30px_rgba(239,68,68,0.4)]' : 'border-neutral-700 bg-neutral-900/80 hover:bg-neutral-800 hover:border-neutral-600'}`}>
+            {isVoiceLive && <div className="absolute inset-[-2px] rounded-full border-2 border-red-500 opacity-20 animate-ping pointer-events-none"></div>}
+            <svg xmlns="http://www.w3.org/2000/svg" className={`w-6 h-6 lg:w-7 lg:h-7 ${!isConnected ? 'text-neutral-600' : isVoiceLive ? 'text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.6)]' : 'text-neutral-400'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              {isVoiceLive ? (<><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line></>) : (<><line x1="2" x2="22" y1="2" y2="22"></line><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"></path><path d="M5 10v2a7 7 0 0 0 12 5"></path><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"></path><path d="M9 9v3a3 3 0 0 0 5.12 2.12"></path><line x1="12" x2="12" y1="19" y2="22"></line></>)}
             </svg>
           </button>
 
           {/* Left: Connect + Actions */}
           <div className="flex items-center gap-2">
+            <LanguageSwitcher compact />
             <button type="button" onClick={(e) => toggleConnection(e)} className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${isConnected ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20' : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20'}`}>
-              {isConnected ? "قطع الاتصال" : "الاتصال"}
+              {isConnected ? t('connection.disconnect') : t('connection.connect')}
             </button>
             <Link href="/profile" className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-neutral-400 hover:text-indigo-300 bg-neutral-900/80 border border-neutral-800 hover:border-indigo-500/40 transition-all">
               <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
-              <span className="hidden sm:inline">ملفي</span>
+              <span className="hidden sm:inline">{t('topBar.profile')}</span>
             </Link>
             <a href="/studio/recordings" className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-neutral-400 hover:text-indigo-300 bg-neutral-900/80 border border-neutral-800 hover:border-indigo-500/40 transition-all">
               <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
-              <span className="hidden sm:inline">أرشيف تسجيلاتي</span>
+              <span className="hidden sm:inline">{t('topBar.recordings')}</span>
             </a>
             <button
               onClick={async () => {
                 if (isConnected) {
-                  if (isMicOpen) setIsMicOpen(false);
+                  if (isVoiceLive) { setIsMicOpen(false); setIsGuestOnAir(false); }
                   stopBroadcastSession();
                   try { await fetch('/api/studio/disconnect', { method: 'POST' }); } catch { /* best-effort */ }
                   setIsConnected(false);
@@ -2405,7 +2721,7 @@ export default function StudioPage({
               className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-neutral-400 hover:text-neutral-200 bg-neutral-900/80 border border-neutral-800 hover:border-neutral-700 transition-all"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-              <span className="hidden sm:inline">خروج</span>
+              <span className="hidden sm:inline">{t('topBar.exitStudio')}</span>
             </button>
           </div>
         </div>
@@ -2416,7 +2732,15 @@ export default function StudioPage({
          ═══════════════════════════════════════════════════════════════════════ */}
       <nav className="lg:hidden sticky top-[60px] z-30 bg-black/60 backdrop-blur-xl border-b border-white/10">
         <div className="flex">
-          {([["mixer","المكسر"],["library","المكتبة"],["queue","القائمة"],["sfx","المؤثرات"]] as [MobileTab,string][]).map(([key,label]) => (
+          {(
+            [
+              ["mixer", t('mobileTabs.mixer')],
+              ["library", t('library.title')],
+              ["queue", t('queue.title')],
+              ["sfx", t('sfx.title')],
+              ...(scheduledStationId ? [["messages", "💬"]] : [])
+            ] as [MobileTab, string][]
+          ).map(([key, label]) => (
             <button
               key={key}
               onClick={() => setMobileTab(key)}
@@ -2424,27 +2748,28 @@ export default function StudioPage({
             >
               {label}
               {key === "queue" && mediaQueue.length > 0 && <span className="mr-1 px-1.5 py-0.5 bg-violet-500/20 text-violet-400 text-[10px] rounded-full">{mediaQueue.length}</span>}
+              {key === "messages" && liveMessages.length > 0 && <span className="mr-1 px-1.5 py-0.5 bg-red-500/20 text-red-400 text-[10px] rounded-full">{liveMessages.length}</span>}
             </button>
           ))}
         </div>
       </nav>
 
       {/* ═══════════════════════════════════════════════════════════════════════
-          MAIN 3-COLUMN LAYOUT
+          MAIN 4-COLUMN LAYOUT
          ═══════════════════════════════════════════════════════════════════════ */}
-      <main className="max-w-[1800px] mx-auto px-3 py-3 lg:grid lg:grid-cols-[30fr_40fr_30fr] lg:gap-3 lg:h-[calc(100vh-60px)]">
+      <main className={`max-w-[2000px] mx-auto px-3 py-3 lg:grid lg:gap-3 lg:h-[calc(100vh-60px)] ${!!scheduledStationId ? 'xl:grid-cols-[22fr_34fr_22fr_22fr] lg:grid-cols-[25fr_35fr_40fr]' : 'xl:grid-cols-[25fr_40fr_35fr] lg:grid-cols-[25fr_40fr_35fr]'}`}>
 
         {/* ─────────────────────────────────────────────────────────────────────
             RIGHT COLUMN — Media Library
            ───────────────────────────────────────────────────────────────────── */}
         <section className={`${mobileTab === 'library' ? 'block' : 'hidden'} lg:block lg:overflow-y-auto lg:max-h-full rounded-2xl bg-white/[0.03] backdrop-blur-lg border border-white/10 p-3`}>
           <h2 className="text-sm font-semibold text-neutral-300 mb-3 flex items-center gap-2">
-            📚 مكتبة الوسائط
+            📚 {t('library.title')}
           </h2>
 
           {/* Tab Pills */}
           <div className="flex flex-wrap gap-1.5 mb-3">
-            {([["background","خلفية","indigo"],["songs","أغاني","cyan"],["breaks","فواصل","amber"],["ads","إعلانات","rose"]] as [MediaTab,string,string][]).map(([key,label,color]) => (
+            {([["background",t('library.backgrounds'),"indigo"],["songs",t('library.songs'),"cyan"],["breaks",t('library.breaks'),"amber"],["ads",t('library.ads'),"rose"]] as [MediaTab,string,string][]).map(([key,label,color]) => (
               <button key={key} onClick={() => setActiveMediaTab(key)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                   activeMediaTab === key
@@ -2459,24 +2784,24 @@ export default function StudioPage({
           {activeMediaTab === "background" && (
             <div className="space-y-3">
               <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-lg px-3 py-2 text-[10px] text-indigo-300">
-                ✔ مسموح مع المايك — مسموح مع المايك كسياسة تشغيل. المعاينة داخل المتصفح فقط وليست على البث المباشر.
+                ✔ {t('library.bgAllowedWithMic')}
               </div>
               {/* BG Volume */}
               <div className="bg-neutral-900/60 border border-indigo-500/20 rounded-xl px-3 py-2.5">
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-semibold text-indigo-300">مستوى موسيقى الخلفية</label>
+                  <label className="text-xs font-semibold text-indigo-300">{t('faders.bgLevel')}</label>
                   <span className="text-xs font-mono text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full">
-                    {bgVolume}%{isMicOpen ? ' (مخفوت)' : ''}
+                    {bgVolume}%{isVoiceLive ? ` (${t('faders.ducked')})` : ''}
                   </span>
                 </div>
                 <input type="range" min={0} max={100} value={bgVolume} onChange={e => setBgVolume(Number(e.target.value))} className="w-full h-1.5 accent-indigo-400 cursor-pointer" />
-                {isMicOpen && (
-                  <p className="text-[10px] text-amber-400/80 mt-1.5">⚠ الصوت مخفوت تلقائياً أثناء المايك — الفادر يتحكم في النسبة الكاملة التي تُستعاد بعد الغلق.</p>
+                {isVoiceLive && (
+                  <p className="text-[10px] text-amber-400/80 mt-1.5">⚠ {t('faders.bgDuckNote')}</p>
                 )}
               </div>
               {/* DB Categories */}
               {bgCategories.length === 0 && localFiles.background.length === 0 ? (
-                <p className="text-xs text-neutral-500 text-center py-4">لا توجد موسيقى خلفية. أضفها من لوحة الإدارة أو اختر ملفات من جهازك.</p>
+                <p className="text-xs text-neutral-500 text-center py-4">{t('library.noBgTracks')}</p>
               ) : (
                 bgCategories.map(cat => (
                   <div key={cat.id} className="border border-neutral-800 rounded-xl overflow-hidden">
@@ -2484,12 +2809,12 @@ export default function StudioPage({
                       <span className="text-xs font-medium text-neutral-300">{cat.name}</span>
                       <svg className={`w-3.5 h-3.5 text-neutral-500 transition-transform ${expandedCategories[cat.id] ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
                     </button>
-                    {expandedCategories[cat.id] && cat.tracks.map(t => (
-                      <div key={t.id} className="flex items-center justify-between px-3 py-1.5 border-t border-neutral-800/50 hover:bg-neutral-800/30 transition-colors">
-                        <span className="text-xs text-neutral-300 truncate flex-1">{t.title}</span>
-                        <button onClick={() => { if (activeBgTrackId === t.id) { setActiveBgTrackId(null); } else { setActiveBgTrackId(t.id); } }}
-                          className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-all ${activeBgTrackId === t.id ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' : 'bg-neutral-800 text-neutral-400 border border-neutral-700 hover:text-neutral-200'}`}
-                        >{activeBgTrackId === t.id ? 'إلغاء' : 'اختيار'}</button>
+                    {expandedCategories[cat.id] && cat.tracks.map(tr => (
+                      <div key={tr.id} className="flex items-center justify-between px-3 py-1.5 border-t border-neutral-800/50 hover:bg-neutral-800/30 transition-colors">
+                        <span className="text-xs text-neutral-300 truncate flex-1">{tr.title}</span>
+                        <button onClick={() => { if (activeBgTrackId === tr.id) { setActiveBgTrackId(null); } else { setActiveBgTrackId(tr.id); } }}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-all ${activeBgTrackId === tr.id ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' : 'bg-neutral-800 text-neutral-400 border border-neutral-700 hover:text-neutral-200'}`}
+                        >{activeBgTrackId === tr.id ? t('library.deselect') : t('library.select')}</button>
                       </div>
                     ))}
                   </div>
@@ -2498,22 +2823,22 @@ export default function StudioPage({
               {/* Local BG Files */}
               <div className="border-t border-neutral-800 pt-3 mt-2">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold text-neutral-400 flex items-center gap-1.5">● من جهازي <span className="px-1.5 py-0.5 bg-neutral-800 text-neutral-500 text-[9px] rounded-full">جلسة فقط</span></span>
-                  {localFiles.background.length > 0 && <button onClick={() => handleClearLocalFiles("background")} className="text-[10px] text-neutral-500 hover:text-red-400 transition-colors">مسح الكل</button>}
+                  <span className="text-xs font-semibold text-neutral-400 flex items-center gap-1.5">● {t('library.fromMyDevice')} <span className="px-1.5 py-0.5 bg-neutral-800 text-neutral-500 text-[9px] rounded-full">{t('library.sessionOnly')}</span></span>
+                  {localFiles.background.length > 0 && <button onClick={() => handleClearLocalFiles("background")} className="text-[10px] text-neutral-500 hover:text-red-400 transition-colors">{t('library.clearAll')}</button>}
                 </div>
                 {localFiles.background.map(f => (
                   <div key={f.id} className="flex items-center gap-2 py-1.5 border-b border-neutral-800/40">
                     <span className="text-xs text-neutral-300 truncate flex-1">{f.name}</span>
                     <button onClick={() => { if (activeBgLocalUrl === f.objectUrl) { setActiveBgLocalUrl(null); } else { setActiveBgLocalUrl(f.objectUrl); } }}
                       className={`px-2 py-0.5 text-[10px] rounded-lg font-medium ${activeBgLocalUrl === f.objectUrl ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' : 'bg-neutral-800 text-neutral-400 border border-neutral-700'}`}
-                    >{activeBgLocalUrl === f.objectUrl ? '✓ خلفية' : 'تشغيل كخلفية'}</button>
+                    >{activeBgLocalUrl === f.objectUrl ? `✓ ${t('library.activeBg')}` : t('library.playAsBg')}</button>
                     <button onClick={() => handleRemoveLocalFile("background", f.id)} className="text-neutral-600 hover:text-red-400 text-sm">✕</button>
                     <audio controls src={f.objectUrl} className="h-6 w-24 opacity-60" />
                   </div>
                 ))}
                 <label className="mt-2 flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-dashed border-neutral-700 bg-neutral-900/40 text-xs text-neutral-500 hover:text-neutral-300 hover:border-neutral-500 cursor-pointer transition-all">
-                  + اختر ملف صوتي من جهازك
-                  <input type="file" accept="audio/*" className="hidden" onChange={e => { if (e.target.files?.[0]) handleLocalFilePick("background", e.target.files); e.target.value = ''; }} />
+                  + {t('library.selectAudioFile')}
+                  <input type="file" accept="audio/*" multiple className="hidden" onChange={e => { if (e.target.files?.[0]) handleLocalFilePick("background", e.target.files); e.target.value = ''; }} />
                 </label>
               </div>
             </div>
@@ -2523,10 +2848,10 @@ export default function StudioPage({
           {activeMediaTab === "songs" && (
             <div className="space-y-3">
               <div className="bg-cyan-500/5 border border-cyan-500/20 rounded-lg px-3 py-2 text-[10px] text-cyan-300">
-                {MEDIA_POLICY.SONG.label} — {isMicOpen ? MEDIA_POLICY.SONG.waitLabel : 'عند غلق المايك ستصبح الأغاني جاهزة للتشغيل'}
+                {MEDIA_POLICY.SONG.label} — {isVoiceLive ? MEDIA_POLICY.SONG.waitLabel : t('library.readyOnMicCloseSongs')}
               </div>
               {songCategories.length === 0 && localFiles.songs.length === 0 ? (
-                <p className="text-xs text-neutral-500 text-center py-4">لا توجد أغاني في المكتبة. أضفها من لوحة الإدارة أو اختر ملفات من جهازك.</p>
+                <p className="text-xs text-neutral-500 text-center py-4">{t('library.noSongs')}</p>
               ) : (
                 songCategories.map(cat => (
                   <div key={cat.id} className="border border-neutral-800 rounded-xl overflow-hidden">
@@ -2534,19 +2859,19 @@ export default function StudioPage({
                       <span className="text-xs font-medium text-neutral-300">{cat.name}</span>
                       <svg className={`w-3.5 h-3.5 text-neutral-500 transition-transform ${expandedCategories[cat.id] ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
                     </button>
-                    {expandedCategories[cat.id] && cat.tracks.map(t => {
-                      const inQueue = mediaQueue.some(q => q.trackId === t.id && q.mediaType === "SONG");
+                    {expandedCategories[cat.id] && cat.tracks.map(tr => {
+                      const inQueue = mediaQueue.some(q => q.trackId === tr.id && q.mediaType === "SONG");
                       return (
-                        <div key={t.id} className="flex items-center justify-between px-3 py-1.5 border-t border-neutral-800/50 hover:bg-neutral-800/30 transition-colors">
+                        <div key={tr.id} className="flex items-center justify-between px-3 py-1.5 border-t border-neutral-800/50 hover:bg-neutral-800/30 transition-colors">
                           <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <span className="text-xs text-neutral-300 truncate">{t.title}</span>
-                            {inQueue && <span className="px-1.5 py-0.5 rounded-full text-[9px] bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">في الانتظار</span>}
+                            <span className="text-xs text-neutral-300 truncate">{tr.title}</span>
+                            {inQueue && <span className="px-1.5 py-0.5 rounded-full text-[9px] bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">{t('queue.inQueue')}</span>}
                           </div>
                           <button
                             disabled={!isConnected}
-                            onClick={() => handleSelectSong(t.id, t.title, cat.ownerType as "ADMIN"|"PRESENTER")}
+                            onClick={() => handleSelectSong(tr.id, tr.title, cat.ownerType as "ADMIN"|"PRESENTER")}
                             className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-all ${inQueue ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-neutral-800 text-neutral-400 border border-neutral-700 hover:text-neutral-200'} ${!isConnected ? 'opacity-40 cursor-not-allowed' : ''}`}
-                          >{inQueue ? 'إلغاء' : 'أضف للانتظار'}</button>
+                          >{inQueue ? t('queue.cancelQueue') : t('queue.addToQueue')}</button>
                         </div>
                       );
                     })}
@@ -2556,11 +2881,11 @@ export default function StudioPage({
               {/* Local Song Files */}
               <div className="border-t border-neutral-800 pt-3 mt-2">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold text-neutral-400 flex items-center gap-1.5">● من جهازي <span className="px-1.5 py-0.5 bg-neutral-800 text-neutral-500 text-[9px] rounded-full">جلسة فقط</span></span>
-                  {localFiles.songs.length > 0 && <button onClick={() => handleClearLocalFiles("songs")} className="text-[10px] text-neutral-500 hover:text-red-400 transition-colors">مسح الكل</button>}
+                  <span className="text-xs font-semibold text-neutral-400 flex items-center gap-1.5">● {t('library.fromMyDevice')} <span className="px-1.5 py-0.5 bg-neutral-800 text-neutral-500 text-[9px] rounded-full">{t('library.sessionOnly')}</span></span>
+                  {localFiles.songs.length > 0 && <button onClick={() => handleClearLocalFiles("songs")} className="text-[10px] text-neutral-500 hover:text-red-400 transition-colors">{t('library.clearAll')}</button>}
                 </div>
                 {localFiles.songs.length > 0 && (
-                  <p className="text-[10px] text-amber-400/70 mb-2">⚠ ملفاتك المحلية — استخدم زر +انتظار للإضافة للقائمة. المعاينة داخل المتصفح فقط وليست على البث.</p>
+                  <p className="text-[10px] text-amber-400/70 mb-2">⚠ {t('library.localFilesNote')}</p>
                 )}
                 {localFiles.songs.map(f => {
                   const inQ = mediaQueue.some(q => q.trackId === f.id && q.sourceType === "LOCAL_SESSION");
@@ -2569,15 +2894,15 @@ export default function StudioPage({
                       <span className="text-xs text-neutral-300 truncate flex-1">{f.name}</span>
                       <button onClick={() => { if (inQ) { const qi = mediaQueue.find(q => q.trackId === f.id); if (qi) removeQueueItem(qi.id); } else enqueueLocalFile("songs", f); }}
                         className={`px-2 py-0.5 text-[10px] rounded-lg font-medium ${inQ ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-neutral-800 text-neutral-400 border border-neutral-700'}`}
-                      >{inQ ? '✓' : '+انتظار'}</button>
+                      >{inQ ? '✓' : `+${t('queue.waitingForMic')}`}</button>
                       <button onClick={() => handleRemoveLocalFileWithQueueCleanup("songs", f.id)} className="text-neutral-600 hover:text-red-400 text-sm">✕</button>
                       <audio controls src={f.objectUrl} className="h-6 w-24 opacity-60" />
                     </div>
                   );
                 })}
                 <label className="mt-2 flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-dashed border-neutral-700 bg-neutral-900/40 text-xs text-neutral-500 hover:text-neutral-300 hover:border-neutral-500 cursor-pointer transition-all">
-                  + اختر ملف صوتي من جهازك
-                  <input type="file" accept="audio/*" className="hidden" onChange={e => { if (e.target.files?.[0]) handleLocalFilePick("songs", e.target.files); e.target.value = ''; }} />
+                  + {t('library.selectAudioFile')}
+                  <input type="file" accept="audio/*" multiple className="hidden" onChange={e => { if (e.target.files?.[0]) handleLocalFilePick("songs", e.target.files); e.target.value = ''; }} />
                 </label>
               </div>
             </div>
@@ -2587,27 +2912,27 @@ export default function StudioPage({
           {activeMediaTab === "breaks" && (
             <div className="space-y-3">
               <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-2 text-[10px] text-amber-300">
-                {MEDIA_POLICY.BREAK.label} — {isMicOpen ? MEDIA_POLICY.BREAK.waitLabel : 'عند غلق المايك ستصبح الفواصل جاهزة للتشغيل'}
+                {MEDIA_POLICY.BREAK.label} — {isVoiceLive ? MEDIA_POLICY.BREAK.waitLabel : t('library.readyOnMicCloseBreaks')}
               </div>
               {/* Admin shared breaks */}
               <div>
-                <h3 className="text-xs font-semibold text-neutral-400 mb-2 flex items-center gap-1.5">فواصل المحطة <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-400 text-[9px] rounded-full border border-amber-500/20">Admin</span></h3>
+                <h3 className="text-xs font-semibold text-neutral-400 mb-2 flex items-center gap-1.5">{t('library.stationBreaks')} <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-400 text-[9px] rounded-full border border-amber-500/20">{t('library.admin')}</span></h3>
                 {adminBreakCategories.length === 0 ? (
-                  <p className="text-[10px] text-neutral-500 text-center py-2">لا توجد فواصل محطة. أضفها من لوحة الإدارة.</p>
+                  <p className="text-[10px] text-neutral-500 text-center py-2">{t('library.noStationBreaks')}</p>
                 ) : adminBreakCategories.map(cat => (
                   <div key={cat.id} className="border border-neutral-800 rounded-xl overflow-hidden mb-2">
                     <button onClick={() => setExpandedCategories(prev => ({ ...prev, [cat.id]: !prev[cat.id] }))} className="w-full flex items-center justify-between px-3 py-2 bg-neutral-900/60 hover:bg-neutral-800/60 transition-colors">
                       <span className="text-xs font-medium text-neutral-300">{cat.name}</span>
                       <svg className={`w-3.5 h-3.5 text-neutral-500 transition-transform ${expandedCategories[cat.id] ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
                     </button>
-                    {expandedCategories[cat.id] && cat.tracks.map(t => {
-                      const inQueue = mediaQueue.some(q => q.trackId === t.id && q.mediaType === "BREAK");
+                    {expandedCategories[cat.id] && cat.tracks.map(tr => {
+                      const inQueue = mediaQueue.some(q => q.trackId === tr.id && q.mediaType === "BREAK");
                       return (
-                        <div key={t.id} className="flex items-center justify-between px-3 py-1.5 border-t border-neutral-800/50 hover:bg-neutral-800/30 transition-colors">
-                          <span className="text-xs text-neutral-300 truncate flex-1">{t.title}</span>
-                          <button disabled={!isConnected} onClick={() => { if (inQueue) { const qi = mediaQueue.find(q => q.trackId === t.id && q.mediaType === "BREAK"); if (qi) removeQueueItem(qi.id); } else enqueueItem(t.id, t.title, "BREAK", "ADMIN_DB", "ADMIN"); }}
+                        <div key={tr.id} className="flex items-center justify-between px-3 py-1.5 border-t border-neutral-800/50 hover:bg-neutral-800/30 transition-colors">
+                          <span className="text-xs text-neutral-300 truncate flex-1">{tr.title}</span>
+                          <button disabled={!isConnected} onClick={() => { if (inQueue) { const qi = mediaQueue.find(q => q.trackId === tr.id && q.mediaType === "BREAK"); if (qi) removeQueueItem(qi.id); } else enqueueItem(tr.id, tr.title, "BREAK", "ADMIN_DB", "ADMIN"); }}
                             className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-all ${inQueue ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-neutral-800 text-neutral-400 border border-neutral-700 hover:text-neutral-200'} ${!isConnected ? 'opacity-40 cursor-not-allowed' : ''}`}
-                          >{inQueue ? '✓ في الانتظار' : 'أضف للانتظار'}</button>
+                          >{inQueue ? `✓ ${t('queue.inQueue')}` : t('queue.addToQueue')}</button>
                         </div>
                       );
                     })}
@@ -2616,23 +2941,23 @@ export default function StudioPage({
               </div>
               {/* Presenter breaks */}
               <div>
-                <h3 className="text-xs font-semibold text-neutral-400 mb-2 flex items-center gap-1.5">فواصلي <span className="px-1.5 py-0.5 bg-violet-500/10 text-violet-400 text-[9px] rounded-full border border-violet-500/20">مكتبتي</span></h3>
+                <h3 className="text-xs font-semibold text-neutral-400 mb-2 flex items-center gap-1.5">{t('library.myBreaks')} <span className="px-1.5 py-0.5 bg-violet-500/10 text-violet-400 text-[9px] rounded-full border border-violet-500/20">{t('library.myLibrary')}</span></h3>
                 {presenterBreakCategories.length === 0 ? (
-                  <p className="text-[10px] text-neutral-500 text-center py-2">لا توجد فواصل خاصة بعد — ارفع فاصلك أدناه.</p>
+                  <p className="text-[10px] text-neutral-500 text-center py-2">{t('library.noPresenterBreaks')}</p>
                 ) : presenterBreakCategories.map(cat => (
                   <div key={cat.id} className="border border-neutral-800 rounded-xl overflow-hidden mb-2">
                     <button onClick={() => setExpandedCategories(prev => ({ ...prev, [cat.id]: !prev[cat.id] }))} className="w-full flex items-center justify-between px-3 py-2 bg-neutral-900/60 hover:bg-neutral-800/60 transition-colors">
                       <span className="text-xs font-medium text-neutral-300">{cat.name}</span>
                       <svg className={`w-3.5 h-3.5 text-neutral-500 transition-transform ${expandedCategories[cat.id] ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
                     </button>
-                    {expandedCategories[cat.id] && cat.tracks.map(t => {
-                      const inQueue = mediaQueue.some(q => q.trackId === t.id && q.mediaType === "BREAK");
+                    {expandedCategories[cat.id] && cat.tracks.map(tr => {
+                      const inQueue = mediaQueue.some(q => q.trackId === tr.id && q.mediaType === "BREAK");
                       return (
-                        <div key={t.id} className="flex items-center justify-between px-3 py-1.5 border-t border-neutral-800/50 hover:bg-neutral-800/30 transition-colors">
-                          <span className="text-xs text-neutral-300 truncate flex-1">{t.title}</span>
-                          <button disabled={!isConnected} onClick={() => { if (inQueue) { const qi = mediaQueue.find(q => q.trackId === t.id && q.mediaType === "BREAK"); if (qi) removeQueueItem(qi.id); } else enqueueItem(t.id, t.title, "BREAK", "PRESENTER_DB", "PRESENTER"); }}
+                        <div key={tr.id} className="flex items-center justify-between px-3 py-1.5 border-t border-neutral-800/50 hover:bg-neutral-800/30 transition-colors">
+                          <span className="text-xs text-neutral-300 truncate flex-1">{tr.title}</span>
+                          <button disabled={!isConnected} onClick={() => { if (inQueue) { const qi = mediaQueue.find(q => q.trackId === tr.id && q.mediaType === "BREAK"); if (qi) removeQueueItem(qi.id); } else enqueueItem(tr.id, tr.title, "BREAK", "PRESENTER_DB", "PRESENTER"); }}
                             className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-all ${inQueue ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-neutral-800 text-neutral-400 border border-neutral-700 hover:text-neutral-200'} ${!isConnected ? 'opacity-40 cursor-not-allowed' : ''}`}
-                          >{inQueue ? '✓ أضف مرة أخرى' : 'أضف للانتظار'}</button>
+                          >{inQueue ? `✓ ${t('queue.addAgain')}` : t('queue.addToQueue')}</button>
                         </div>
                       );
                     })}
@@ -2649,8 +2974,8 @@ export default function StudioPage({
               {/* Local break files */}
               <div className="border-t border-neutral-800 pt-3 mt-2">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold text-neutral-400 flex items-center gap-1.5">فواصلي من جهازي <span className="px-1.5 py-0.5 bg-neutral-800 text-neutral-500 text-[9px] rounded-full">جلسة فقط</span></span>
-                  {localFiles.breaks.length > 0 && <button onClick={() => handleClearLocalFiles("breaks")} className="text-[10px] text-neutral-500 hover:text-red-400 transition-colors">مسح الكل</button>}
+                  <span className="text-xs font-semibold text-neutral-400 flex items-center gap-1.5">{t('library.myBreaksFromDevice')} <span className="px-1.5 py-0.5 bg-neutral-800 text-neutral-500 text-[9px] rounded-full">{t('library.sessionOnly')}</span></span>
+                  {localFiles.breaks.length > 0 && <button onClick={() => handleClearLocalFiles("breaks")} className="text-[10px] text-neutral-500 hover:text-red-400 transition-colors">{t('library.clearAll')}</button>}
                 </div>
                 {localFiles.breaks.map(f => {
                   const inQ = mediaQueue.some(q => q.trackId === f.id && q.sourceType === "LOCAL_SESSION");
@@ -2659,15 +2984,15 @@ export default function StudioPage({
                       <span className="text-xs text-neutral-300 truncate flex-1">{f.name}</span>
                       <button onClick={() => { if (inQ) { const qi = mediaQueue.find(q => q.trackId === f.id); if (qi) removeQueueItem(qi.id); } else enqueueLocalFile("breaks", f); }}
                         className={`px-2 py-0.5 text-[10px] rounded-lg font-medium ${inQ ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-neutral-800 text-neutral-400 border border-neutral-700'}`}
-                      >{inQ ? '✓' : '+انتظار'}</button>
+                      >{inQ ? '✓' : `+${t('queue.waitingForMic')}`}</button>
                       <button onClick={() => handleRemoveLocalFileWithQueueCleanup("breaks", f.id)} className="text-neutral-600 hover:text-red-400 text-sm">✕</button>
                       <audio controls src={f.objectUrl} className="h-6 w-24 opacity-60" />
                     </div>
                   );
                 })}
                 <label className="mt-2 flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-dashed border-neutral-700 bg-neutral-900/40 text-xs text-neutral-500 hover:text-neutral-300 hover:border-neutral-500 cursor-pointer transition-all">
-                  + اختر فاصل/جينغل من جهازك
-                  <input type="file" accept="audio/*" className="hidden" onChange={e => { if (e.target.files?.[0]) handleLocalFilePick("breaks", e.target.files); e.target.value = ''; }} />
+                  + {t('library.selectBreakFile')}
+                  <input type="file" accept="audio/*" multiple className="hidden" onChange={e => { if (e.target.files?.[0]) handleLocalFilePick("breaks", e.target.files); e.target.value = ''; }} />
                 </label>
               </div>
             </div>
@@ -2677,27 +3002,27 @@ export default function StudioPage({
           {activeMediaTab === "ads" && (
             <div className="space-y-3">
               <div className="bg-rose-500/5 border border-rose-500/20 rounded-lg px-3 py-2 text-[10px] text-rose-300">
-                {MEDIA_POLICY.AD.label} — {isMicOpen ? MEDIA_POLICY.AD.waitLabel : 'عند غلق المايك ستصبح الإعلانات جاهزة للتشغيل'}
+                {MEDIA_POLICY.AD.label} — {isVoiceLive ? MEDIA_POLICY.AD.waitLabel : t('library.readyOnMicCloseAds')}
               </div>
               {/* Admin shared ads */}
               <div>
-                <h3 className="text-xs font-semibold text-neutral-400 mb-2 flex items-center gap-1.5">إعلانات المحطة <span className="px-1.5 py-0.5 bg-rose-500/10 text-rose-400 text-[9px] rounded-full border border-rose-500/20">Admin</span></h3>
+                <h3 className="text-xs font-semibold text-neutral-400 mb-2 flex items-center gap-1.5">{t('library.stationAds')} <span className="px-1.5 py-0.5 bg-rose-500/10 text-rose-400 text-[9px] rounded-full border border-rose-500/20">{t('library.admin')}</span></h3>
                 {adminAdCategories.length === 0 ? (
-                  <p className="text-[10px] text-neutral-500 text-center py-2">لا توجد إعلانات محطة. أضفها من لوحة الإدارة.</p>
+                  <p className="text-[10px] text-neutral-500 text-center py-2">{t('library.noStationAds')}</p>
                 ) : adminAdCategories.map(cat => (
                   <div key={cat.id} className="border border-neutral-800 rounded-xl overflow-hidden mb-2">
                     <button onClick={() => setExpandedCategories(prev => ({ ...prev, [cat.id]: !prev[cat.id] }))} className="w-full flex items-center justify-between px-3 py-2 bg-neutral-900/60 hover:bg-neutral-800/60 transition-colors">
                       <span className="text-xs font-medium text-neutral-300">{cat.name}</span>
                       <svg className={`w-3.5 h-3.5 text-neutral-500 transition-transform ${expandedCategories[cat.id] ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
                     </button>
-                    {expandedCategories[cat.id] && cat.tracks.map(t => {
-                      const inQueue = mediaQueue.some(q => q.trackId === t.id && q.mediaType === "AD");
+                    {expandedCategories[cat.id] && cat.tracks.map(tr => {
+                      const inQueue = mediaQueue.some(q => q.trackId === tr.id && q.mediaType === "AD");
                       return (
-                        <div key={t.id} className="flex items-center justify-between px-3 py-1.5 border-t border-neutral-800/50 hover:bg-neutral-800/30 transition-colors">
-                          <span className="text-xs text-neutral-300 truncate flex-1">{t.title}</span>
-                          <button disabled={!isConnected} onClick={() => { if (inQueue) { const qi = mediaQueue.find(q => q.trackId === t.id && q.mediaType === "AD"); if (qi) removeQueueItem(qi.id); } else enqueueItem(t.id, t.title, "AD", "ADMIN_DB", "ADMIN"); }}
+                        <div key={tr.id} className="flex items-center justify-between px-3 py-1.5 border-t border-neutral-800/50 hover:bg-neutral-800/30 transition-colors">
+                          <span className="text-xs text-neutral-300 truncate flex-1">{tr.title}</span>
+                          <button disabled={!isConnected} onClick={() => { if (inQueue) { const qi = mediaQueue.find(q => q.trackId === tr.id && q.mediaType === "AD"); if (qi) removeQueueItem(qi.id); } else enqueueItem(tr.id, tr.title, "AD", "ADMIN_DB", "ADMIN"); }}
                             className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-all ${inQueue ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-neutral-800 text-neutral-400 border border-neutral-700 hover:text-neutral-200'} ${!isConnected ? 'opacity-40 cursor-not-allowed' : ''}`}
-                          >{inQueue ? '✓ أضف مرة أخرى' : 'أضف للانتظار'}</button>
+                          >{inQueue ? `✓ ${t('queue.addAgain')}` : t('queue.addToQueue')}</button>
                         </div>
                       );
                     })}
@@ -2706,23 +3031,23 @@ export default function StudioPage({
               </div>
               {/* Presenter ads */}
               <div>
-                <h3 className="text-xs font-semibold text-neutral-400 mb-2 flex items-center gap-1.5">إعلاناتي <span className="px-1.5 py-0.5 bg-violet-500/10 text-violet-400 text-[9px] rounded-full border border-violet-500/20">مكتبتي</span></h3>
+                <h3 className="text-xs font-semibold text-neutral-400 mb-2 flex items-center gap-1.5">{t('library.myAds')} <span className="px-1.5 py-0.5 bg-violet-500/10 text-violet-400 text-[9px] rounded-full border border-violet-500/20">{t('library.myLibrary')}</span></h3>
                 {presenterAdCategories.length === 0 ? (
-                  <p className="text-[10px] text-neutral-500 text-center py-2">لا توجد إعلانات خاصة بعد — ارفع إعلانك أدناه.</p>
+                  <p className="text-[10px] text-neutral-500 text-center py-2">{t('library.noPresenterAds')}</p>
                 ) : presenterAdCategories.map(cat => (
                   <div key={cat.id} className="border border-neutral-800 rounded-xl overflow-hidden mb-2">
                     <button onClick={() => setExpandedCategories(prev => ({ ...prev, [cat.id]: !prev[cat.id] }))} className="w-full flex items-center justify-between px-3 py-2 bg-neutral-900/60 hover:bg-neutral-800/60 transition-colors">
                       <span className="text-xs font-medium text-neutral-300">{cat.name}</span>
                       <svg className={`w-3.5 h-3.5 text-neutral-500 transition-transform ${expandedCategories[cat.id] ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
                     </button>
-                    {expandedCategories[cat.id] && cat.tracks.map(t => {
-                      const inQueue = mediaQueue.some(q => q.trackId === t.id && q.mediaType === "AD");
+                    {expandedCategories[cat.id] && cat.tracks.map(tr => {
+                      const inQueue = mediaQueue.some(q => q.trackId === tr.id && q.mediaType === "AD");
                       return (
-                        <div key={t.id} className="flex items-center justify-between px-3 py-1.5 border-t border-neutral-800/50 hover:bg-neutral-800/30 transition-colors">
-                          <span className="text-xs text-neutral-300 truncate flex-1">{t.title}</span>
-                          <button disabled={!isConnected} onClick={() => { if (inQueue) { const qi = mediaQueue.find(q => q.trackId === t.id && q.mediaType === "AD"); if (qi) removeQueueItem(qi.id); } else enqueueItem(t.id, t.title, "AD", "PRESENTER_DB", "PRESENTER"); }}
+                        <div key={tr.id} className="flex items-center justify-between px-3 py-1.5 border-t border-neutral-800/50 hover:bg-neutral-800/30 transition-colors">
+                          <span className="text-xs text-neutral-300 truncate flex-1">{tr.title}</span>
+                          <button disabled={!isConnected} onClick={() => { if (inQueue) { const qi = mediaQueue.find(q => q.trackId === tr.id && q.mediaType === "AD"); if (qi) removeQueueItem(qi.id); } else enqueueItem(tr.id, tr.title, "AD", "PRESENTER_DB", "PRESENTER"); }}
                             className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-all ${inQueue ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-neutral-800 text-neutral-400 border border-neutral-700 hover:text-neutral-200'} ${!isConnected ? 'opacity-40 cursor-not-allowed' : ''}`}
-                          >{inQueue ? '✓ أضف مرة أخرى' : 'أضف للانتظار'}</button>
+                          >{inQueue ? `✓ ${t('queue.addAgain')}` : t('queue.addToQueue')}</button>
                         </div>
                       );
                     })}
@@ -2739,8 +3064,8 @@ export default function StudioPage({
               {/* Local ad files */}
               <div className="border-t border-neutral-800 pt-3 mt-2">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-semibold text-neutral-400 flex items-center gap-1.5">إعلاناتي من جهازي <span className="px-1.5 py-0.5 bg-neutral-800 text-neutral-500 text-[9px] rounded-full">جلسة فقط</span></span>
-                  {localFiles.ads.length > 0 && <button onClick={() => handleClearLocalFiles("ads")} className="text-[10px] text-neutral-500 hover:text-red-400 transition-colors">مسح الكل</button>}
+                  <span className="text-xs font-semibold text-neutral-400 flex items-center gap-1.5">{t('library.myAdsFromDevice')} <span className="px-1.5 py-0.5 bg-neutral-800 text-neutral-500 text-[9px] rounded-full">{t('library.sessionOnly')}</span></span>
+                  {localFiles.ads.length > 0 && <button onClick={() => handleClearLocalFiles("ads")} className="text-[10px] text-neutral-500 hover:text-red-400 transition-colors">{t('library.clearAll')}</button>}
                 </div>
                 {localFiles.ads.map(f => {
                   const inQ = mediaQueue.some(q => q.trackId === f.id && q.sourceType === "LOCAL_SESSION");
@@ -2749,15 +3074,15 @@ export default function StudioPage({
                       <span className="text-xs text-neutral-300 truncate flex-1">{f.name}</span>
                       <button onClick={() => { if (inQ) { const qi = mediaQueue.find(q => q.trackId === f.id); if (qi) removeQueueItem(qi.id); } else enqueueLocalFile("ads", f); }}
                         className={`px-2 py-0.5 text-[10px] rounded-lg font-medium ${inQ ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-neutral-800 text-neutral-400 border border-neutral-700'}`}
-                      >{inQ ? '✓' : '+انتظار'}</button>
+                      >{inQ ? '✓' : `+${t('queue.waitingForMic')}`}</button>
                       <button onClick={() => handleRemoveLocalFileWithQueueCleanup("ads", f.id)} className="text-neutral-600 hover:text-red-400 text-sm">✕</button>
                       <audio controls src={f.objectUrl} className="h-6 w-24 opacity-60" />
                     </div>
                   );
                 })}
                 <label className="mt-2 flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-dashed border-neutral-700 bg-neutral-900/40 text-xs text-neutral-500 hover:text-neutral-300 hover:border-neutral-500 cursor-pointer transition-all">
-                  + اختر إعلان/بروموتر من جهازك
-                  <input type="file" accept="audio/*" className="hidden" onChange={e => { if (e.target.files?.[0]) handleLocalFilePick("ads", e.target.files); e.target.value = ''; }} />
+                  + {t('library.selectAdFile')}
+                  <input type="file" accept="audio/*" multiple className="hidden" onChange={e => { if (e.target.files?.[0]) handleLocalFilePick("ads", e.target.files); e.target.value = ''; }} />
                 </label>
               </div>
             </div>
@@ -2774,12 +3099,12 @@ export default function StudioPage({
             const playingItem = playingQueueId ? mediaQueue.find(q => q.id === playingQueueId) : null;
             const pausedItem  = pausedForMicRef.current;
             let label = '', typeTag = '', stateColor = 'text-neutral-400', dotColor = 'bg-neutral-600';
-            if (isMicOpen && pausedItem) { label = `الميك مباشر — متوقف مؤقتاً: ${pausedItem.title}`; typeTag = 'ميك / ' + (pausedItem.mediaType === 'SONG' ? 'أغنية' : pausedItem.mediaType === 'BREAK' ? 'فاصل' : 'إعلان'); stateColor = 'text-amber-400'; dotColor = 'bg-amber-400 animate-pulse'; }
-            else if (isMicOpen && activeBgTrack) { label = `الميك مباشر — خلفية: ${activeBgTrack}`; typeTag = 'ميك + خلفية'; stateColor = 'text-red-400'; dotColor = 'bg-red-500 animate-pulse'; }
-            else if (isMicOpen) { label = 'الميك مباشر'; typeTag = 'ميك'; stateColor = 'text-red-400'; dotColor = 'bg-red-500 animate-pulse'; }
-            else if (playingItem) { const typeAr = playingItem.mediaType === 'SONG' ? 'أغنية' : playingItem.mediaType === 'BREAK' ? 'فاصل' : 'إعلان'; label = playingItem.title; typeTag = typeAr + ' — يعزف الآن'; stateColor = 'text-emerald-400'; dotColor = 'bg-emerald-500 animate-pulse'; }
-            else if (activeBgTrack) { label = activeBgTrack; typeTag = 'خلفية موسيقية'; stateColor = 'text-indigo-400'; dotColor = 'bg-indigo-500'; }
-            else { label = 'لا يوجد بث حالي'; typeTag = '—'; stateColor = 'text-neutral-600'; dotColor = 'bg-neutral-700'; }
+            if (isVoiceLive && pausedItem) { label = t('nowPlaying.micLivePaused', { title: pausedItem.title }); typeTag = t('nowPlaying.micSlash', { type: pausedItem.mediaType === 'SONG' ? t('mediaType.song') : pausedItem.mediaType === 'BREAK' ? t('mediaType.break') : t('mediaType.ad') }); stateColor = 'text-amber-400'; dotColor = 'bg-amber-400 animate-pulse'; }
+            else if (isVoiceLive && activeBgTrack) { label = t('nowPlaying.micLiveBg', { title: activeBgTrack }); typeTag = t('nowPlaying.micPlusBg'); stateColor = 'text-red-400'; dotColor = 'bg-red-500 animate-pulse'; }
+            else if (isVoiceLive) { label = t('nowPlaying.micLive'); typeTag = t('nowPlaying.mic'); stateColor = 'text-red-400'; dotColor = 'bg-red-500 animate-pulse'; }
+            else if (playingItem) { const typeAr = playingItem.mediaType === 'SONG' ? t('mediaType.song') : playingItem.mediaType === 'BREAK' ? t('mediaType.break') : t('mediaType.ad'); label = playingItem.title; typeTag = t('nowPlaying.nowPlayingType', { type: typeAr }); stateColor = 'text-emerald-400'; dotColor = 'bg-emerald-500 animate-pulse'; }
+            else if (activeBgTrack) { label = activeBgTrack; typeTag = t('mediaType.background'); stateColor = 'text-indigo-400'; dotColor = 'bg-indigo-500'; }
+            else { label = t('nowPlaying.noBroadcast'); typeTag = '—'; stateColor = 'text-neutral-600'; dotColor = 'bg-neutral-700'; }
             return isConnected ? (
               <div className="flex items-center gap-3 bg-white/[0.03] backdrop-blur-lg border border-white/10 rounded-2xl px-4 py-3">
                 <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dotColor}`} />
@@ -2808,8 +3133,8 @@ export default function StudioPage({
                   isConnected ? 'bg-indigo-400' : 'bg-neutral-600'
                 }`} />
                 <div>
-                  <p className="text-[10px] text-neutral-500 leading-none mb-0.5">حالة الهوا</p>
-                  <p className="leading-none">{shoutcastStatus === 'on_air' ? 'على الهواء ✔' : shoutcastStatus === 'connecting' ? 'جاري الاتصال...' : shoutcastStatus === 'radio_error' ? 'فشل الاتصال' : (shoutcastStatus === 'ws_connected' || shoutcastStatus === 'recording' || shoutcastStatus === 'recording_only') ? 'متصل بالاستوديو' : isConnected ? 'متصل' : 'غير متصل'}</p>
+                  <p className="text-[10px] text-neutral-500 leading-none mb-0.5">{t('radio.statusLabel')}</p>
+                  <p className="leading-none">{shoutcastStatus === 'on_air' ? t('radio.onAir') : shoutcastStatus === 'connecting' ? t('radio.connecting') : shoutcastStatus === 'radio_error' ? t('radio.connectionFailed') : (shoutcastStatus === 'ws_connected' || shoutcastStatus === 'recording' || shoutcastStatus === 'recording_only') ? t('radio.connectedToStudio') : isConnected ? t('radio.connected') : t('radio.notConnected')}</p>
                 </div>
               </div>
               {/* Recording status */}
@@ -2819,8 +3144,8 @@ export default function StudioPage({
               }`}>
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 ${(shoutcastStatus === 'recording' || shoutcastStatus === 'on_air' || shoutcastStatus === 'radio_error' || shoutcastStatus === 'recording_only') ? 'bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.7)]' : 'bg-neutral-600'}`} />
                 <div>
-                  <p className="text-[10px] text-neutral-500 leading-none mb-0.5">حالة التسجيل</p>
-                  <p className="leading-none">{(shoutcastStatus === 'recording' || shoutcastStatus === 'on_air' || shoutcastStatus === 'radio_error' || shoutcastStatus === 'recording_only') ? 'تسجيل الجلسة ●' : isConnected ? 'في انتظار الصوت' : 'لا يوجد تسجيل'}</p>
+                  <p className="text-[10px] text-neutral-500 leading-none mb-0.5">{t('recording.statusLabel')}</p>
+                  <p className="leading-none">{(shoutcastStatus === 'recording' || shoutcastStatus === 'on_air' || shoutcastStatus === 'radio_error' || shoutcastStatus === 'recording_only') ? t('recording.sessionRecording') : isConnected ? t('recording.waitingForAudio') : t('recording.noRecording')}</p>
                 </div>
               </div>
             </div>
@@ -2828,15 +3153,15 @@ export default function StudioPage({
             <div className="flex flex-wrap items-center gap-2 text-[10px]">
               <span className={`px-2 py-0.5 rounded-lg border font-mono ${isConnected ? 'bg-neutral-950 border-neutral-800 text-neutral-400' : 'bg-neutral-900 border-neutral-800 text-neutral-600'}`}>64 kbps</span>
               <span className={`px-2 py-0.5 rounded-lg border flex items-center gap-1 ${isConnected ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-neutral-900 border-neutral-800 text-neutral-600'}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-neutral-600'}`}></span>أخضر / ممتاز
+                <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-neutral-600'}`}></span>{t('status.quality')}
               </span>
               <span className="flex items-center gap-1">
                 <span className={`w-1.5 h-1.5 rounded-full ${heartbeatStatus === 'active' ? 'bg-red-500 animate-pulse' : 'bg-neutral-600'}`}></span>
-                <span className={heartbeatStatus === 'active' ? 'text-red-400' : 'text-neutral-500'}>إرسال الميك: {heartbeatStatus === 'active' ? 'نشط' : 'متوقف'}</span>
+                <span className={heartbeatStatus === 'active' ? 'text-red-400' : 'text-neutral-500'}>{t('status.audioSending')}: {heartbeatStatus === 'active' ? t('status.active') : t('status.stopped')}</span>
               </span>
               <span className="flex items-center gap-1">
                 <span className={`w-1.5 h-1.5 rounded-full ${audioBackendStatus === 'connected' ? 'bg-emerald-500' : 'bg-neutral-600'}`}></span>
-                <span className={audioBackendStatus === 'connected' ? 'text-emerald-400' : 'text-neutral-500'}>Backend: {audioBackendStatus === 'connected' ? 'متصل' : 'غير متصل'}</span>
+                <span className={audioBackendStatus === 'connected' ? 'text-emerald-400' : 'text-neutral-500'}>{t('status.backend')}: {audioBackendStatus === 'connected' ? t('radio.connected') : t('radio.notConnected')}</span>
               </span>
             </div>
           </div>
@@ -2852,10 +3177,10 @@ export default function StudioPage({
           <div className={`flex items-center justify-center gap-1.5 h-8 w-full transition-opacity duration-300 ${isConnected ? 'opacity-100' : 'opacity-30'}`}>
             {[...Array(10)].map((_, i) => {
               const posWeight = 1 - Math.abs(i - 4.5) / 4.5;
-              const barHeight = isMicOpen ? Math.max(0.08, volumeLevel * posWeight + (Math.random() * 0.08 * volumeLevel)) : 0;
+              const barHeight = isVoiceLive ? Math.max(0.08, volumeLevel * posWeight + (Math.random() * 0.08 * volumeLevel)) : 0;
               return (
-                <div key={i} className={`w-2 rounded-full transition-all ${isMicOpen ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]' : 'bg-neutral-800'}`}
-                  style={isMicOpen ? { height: `${Math.max(4, barHeight * 32)}px`, animation: `soundBars ${0.2 + Math.random() * 0.3}s ease-in-out infinite alternate` } : { height: '4px' }} />
+                <div key={i} className={`w-2 rounded-full transition-all ${isVoiceLive ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]' : 'bg-neutral-800'}`}
+                  style={isVoiceLive ? { height: `${Math.max(4, barHeight * 32)}px`, animation: `soundBars ${0.2 + Math.random() * 0.3}s ease-in-out infinite alternate` } : { height: '4px' }} />
               );
             })}
           </div>
@@ -2865,42 +3190,57 @@ export default function StudioPage({
             {/* Mic Fader */}
             <div className="bg-white/[0.03] backdrop-blur-lg border border-red-500/20 rounded-xl px-4 py-3">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-semibold text-red-300">🎤 المايكروفون</span>
-                <span className={`text-xs font-medium ${isMicOpen ? 'text-red-400' : 'text-neutral-500'}`}>{isMicOpen ? 'مفتوح' : 'مغلق'}</span>
+                <span className="text-xs font-semibold text-red-300">🎤 {t('faders.microphone')}</span>
+                <span className={`text-xs font-medium ${isMicOpen ? 'text-red-400' : 'text-neutral-500'}`}>{isMicOpen ? t('mic.open') : t('mic.closed')}</span>
               </div>
-              <p className="text-[10px] text-neutral-500">{!isConnected ? 'غير متصل' : isMicOpen ? 'الميك مفتوح — الصوت يُبث مباشرة' : 'اضغط زر الميك لبدء البث'}</p>
+              <p className="text-[10px] text-neutral-500">{!isConnected ? t('mic.notConnected') : isMicOpen ? t('mic.micOpenLive') : t('mic.pressToStart')}</p>
             </div>
 
             {/* Background Fader */}
             <div className="bg-white/[0.03] backdrop-blur-lg border border-blue-500/20 rounded-xl px-4 py-3">
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-semibold text-blue-300">🎵 الخلفية</span>
-                <span className="text-xs font-mono text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full">{bgVolume}%{isMicOpen ? ' (مخفوت)' : ''}</span>
+                <span className="text-xs font-semibold text-blue-300">🎵 {t('faders.background')}</span>
+                <span className="text-xs font-mono text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full">{bgVolume}%{isVoiceLive ? ` (${t('faders.ducked')})` : ''}</span>
               </div>
               <input type="range" min={0} max={100} value={bgVolume} onChange={e => setBgVolume(Number(e.target.value))} className="w-full h-1.5 accent-blue-400 cursor-pointer" />
-              <p className="text-[10px] text-neutral-500 mt-1 truncate">{activeBgTrack || 'لا يوجد'}</p>
+              <p className="text-[10px] text-neutral-500 mt-1 truncate">{activeBgTrack || t('faders.noBg')}</p>
+            </div>
+
+            {/* Guest / Tab Audio Source */}
+            <div className="flex items-center justify-between p-3 bg-neutral-900/60 rounded-xl border border-neutral-800">
+              <span className="text-xs font-semibold text-neutral-400">{t('tabAudioTitle') || 'Guest / Tab Audio'}</span>
+              <div className="flex items-center gap-2">
+                {isTabAudioActive && (
+                  <button onClick={() => setIsGuestOnAir(!isGuestOnAir)} className={`text-[10px] px-2 py-1 rounded-lg border font-medium transition-colors flex items-center gap-1 ${isGuestOnAir ? 'bg-red-500/20 border-red-500/50 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.4)]' : 'bg-neutral-800 border-neutral-600 text-neutral-400 hover:text-neutral-200'}`}>
+                    <div className={`w-1.5 h-1.5 rounded-full ${isGuestOnAir ? 'bg-red-400 animate-pulse' : 'bg-neutral-500'}`}></div>
+                    {isGuestOnAir ? 'GUEST ON AIR' : 'GUEST OFF AIR'}
+                  </button>
+                )}
+                <button onClick={isTabAudioActive ? stopTabAudio : startTabAudio} className={`text-[10px] px-2 py-1 rounded-lg border font-medium transition-colors ${isTabAudioActive ? 'bg-neutral-800 border-neutral-700 text-neutral-400 hover:bg-neutral-700' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'}`}>
+                  {isTabAudioActive ? 'Stop' : (t('startTabCapture') || 'Start Tab Capture')}
+                </button>
+              </div>
             </div>
 
             {/* Queue Fader */}
             <div className="bg-white/[0.03] backdrop-blur-lg border border-green-500/20 rounded-xl px-4 py-3">
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-semibold text-green-300">📋 قائمة الانتظار</span>
+                <span className="text-xs font-semibold text-green-300">📋 {t('queue.title')}</span>
                 <span className="text-xs font-mono text-green-400 bg-green-500/10 border border-green-500/20 px-2 py-0.5 rounded-full">{queueVolume}%</span>
               </div>
               <input type="range" min={0} max={100} value={queueVolume} onChange={e => setQueueVolume(Number(e.target.value))} className="w-full h-1.5 accent-green-400 cursor-pointer" />
-              <p className="text-[10px] text-neutral-500 mt-1">يُطبَّق على الأغاني والفواصل والإعلانات</p>
+              <p className="text-[10px] text-neutral-500 mt-1">{t('faders.queueAppliesTo')}</p>
             </div>
           </div>
 
-          {/* ── Monitoring ── */}
-          {isConnected && (
-            <div className="bg-white/[0.03] backdrop-blur-lg border border-white/10 rounded-2xl p-3 space-y-2">
+          {/* ── Monitoring ── (always available, even before connecting) */}
+          <div className="bg-white/[0.03] backdrop-blur-lg border border-white/10 rounded-2xl p-3 space-y-2">
               <button onClick={toggleMonitoring} className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl border text-sm font-medium transition-all ${isMonitoring ? 'bg-amber-500/15 border-amber-500/40 text-amber-400' : 'bg-neutral-900/50 border-neutral-800 text-neutral-500 hover:text-neutral-300'}`}>
-                🎧 المراقبة: {isMonitoring ? 'ON' : 'OFF'}
+                🎧 {t('monitor.title')}: {isMonitoring ? 'ON' : 'OFF'}
               </button>
               <div className={`flex flex-col gap-1.5 bg-neutral-900/40 border rounded-xl px-3 py-2.5 transition-opacity ${isMonitoring ? 'border-amber-500/20 opacity-100' : 'border-neutral-800 opacity-40 pointer-events-none'}`}>
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-amber-300">مستوى صوت المراقبة</label>
+                  <label className="text-xs font-semibold text-amber-300">{t('monitor.volume')}</label>
                   <span className="text-xs font-mono text-amber-400">{Math.round(monitorVolume * 100)}%</span>
                 </div>
                 <input type="range" min={0} max={1} step={0.05} value={monitorVolume}
@@ -2908,23 +3248,69 @@ export default function StudioPage({
                   className="w-full h-1.5 accent-amber-400 cursor-pointer" />
               </div>
               {isMonitoring && (
-                <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[11px] px-3 py-1.5 rounded-lg text-center justify-center">⚠️ استخدم سماعات Headphones لتجنب الصفير / feedback</div>
+                <>
+                  {/* Output device selector */}
+                  <div className="flex flex-col gap-1.5 bg-neutral-900/40 border border-amber-500/20 rounded-xl px-3 py-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-amber-300">{t('monitor.outputDevice')}</label>
+                      <button onClick={refreshAudioOutputDevices} className="text-[10px] px-2 py-1 rounded-lg bg-neutral-800 border border-neutral-700 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-700 transition-colors">↻ {t('monitor.refresh')}</button>
+                    </div>
+                    <select value={selectedOutputDeviceId} onChange={e => switchOutputDevice(e.target.value)}
+                      className="w-full bg-neutral-900 border border-neutral-700 text-neutral-200 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-amber-500/60 cursor-pointer">
+                      {audioOutputDevices.length === 0 && <option value="default">{t('monitor.defaultOutput')}</option>}
+                      {audioOutputDevices.map((dev, i) => (
+                        <option key={dev.deviceId} value={dev.deviceId}>
+                          {dev.label || `${t('monitor.speakerLabel', { index: i + 1 })}${dev.deviceId === 'default' ? ` ${t('monitor.speakerDefault')}` : ''}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[11px] px-3 py-1.5 rounded-lg text-center justify-center">⚠️ {t('monitor.headphoneWarning')}</div>
+                </>
               )}
-            </div>
-          )}
+          </div>
 
           {/* ── Mic Source ── */}
           <div className="bg-white/[0.03] backdrop-blur-lg border border-white/10 rounded-2xl p-3 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-neutral-400">مصدر الميكروفون</span>
-              <button onClick={refreshAudioInputDevices} className="text-[10px] px-2 py-1 rounded-lg bg-neutral-800 border border-neutral-700 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-700 transition-colors">↻ تحديث الأجهزة</button>
+              <span className="text-xs font-semibold text-neutral-400">{t('mic.source')}</span>
+              <button onClick={refreshAudioInputDevices} className="text-[10px] px-2 py-1 rounded-lg bg-neutral-800 border border-neutral-700 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-700 transition-colors">↻ {t('mic.refreshDevices')}</button>
             </div>
             <select value={selectedMicDeviceId} onChange={e => switchMicDevice(e.target.value)} className="w-full bg-neutral-900 border border-neutral-700 text-neutral-200 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500/60 cursor-pointer">
-              {audioInputDevices.length === 0 && <option value="">الميكروفون الافتراضي</option>}
-              {audioInputDevices.map((dev, i) => <option key={dev.deviceId} value={dev.deviceId}>{dev.label || `ميكروفون ${i + 1}${dev.deviceId === 'default' ? ' (افتراضي)' : ''}`}</option>)}
+              {audioInputDevices.length === 0 && <option value="">{t('mic.defaultDevice')}</option>}
+              {audioInputDevices.map((dev, i) => <option key={dev.deviceId} value={dev.deviceId}>{dev.label || `${t('mic.deviceLabel', { index: i + 1 })}${dev.deviceId === 'default' ? ` ${t('mic.deviceDefault')}` : ''}`}</option>)}
             </select>
             {micDeviceError && <div className="text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/25 px-2.5 py-1.5 rounded-lg">⚠️ {micDeviceError}</div>}
-            <p className="text-[9px] text-neutral-600 text-center">قد تظهر أسماء الأجهزة بعد منح صلاحية الميكروفون</p>
+            <p className="text-[9px] text-neutral-600 text-center">{t('mic.devicePermission')}</p>
+          </div>
+
+          {/* ── Guest / Tab Audio Source ── */}
+          <div className="bg-white/[0.03] backdrop-blur-lg border border-white/10 rounded-2xl p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-neutral-400">{t('tabAudioTitle') || 'Guest / Tab Audio'}</span>
+              <div className="flex items-center gap-2">
+                {isTabAudioActive && (
+                  <button onClick={() => setIsGuestOnAir(!isGuestOnAir)} className={`text-[10px] px-2 py-1 rounded-lg border font-medium transition-colors flex items-center gap-1 ${isGuestOnAir ? 'bg-red-500/20 border-red-500/50 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.4)]' : 'bg-neutral-800 border-neutral-600 text-neutral-400 hover:text-neutral-200'}`}>
+                    <div className={`w-1.5 h-1.5 rounded-full ${isGuestOnAir ? 'bg-red-400 animate-pulse' : 'bg-neutral-500'}`}></div>
+                    {isGuestOnAir ? 'GUEST ON AIR' : 'GUEST OFF AIR'}
+                  </button>
+                )}
+                <button onClick={isTabAudioActive ? stopTabAudio : startTabAudio} className={`text-[10px] px-2 py-1 rounded-lg border font-medium transition-colors ${isTabAudioActive ? 'bg-neutral-800 border-neutral-700 text-neutral-400 hover:bg-neutral-700' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'}`}>
+                  {isTabAudioActive ? 'Stop' : (t('startTabCapture') || 'Start Tab Capture')}
+                </button>
+              </div>
+            </div>
+            
+            <div className={`flex flex-col gap-1.5 bg-neutral-900/40 border rounded-xl px-3 py-2.5 transition-opacity ${isTabAudioActive ? 'border-emerald-500/20 opacity-100' : 'border-neutral-800 opacity-40 pointer-events-none'}`}>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-emerald-300">{t('tabAudioVolume') || 'Volume'}</label>
+                <span className="text-xs font-mono text-emerald-400">{tabAudioVolume}%</span>
+              </div>
+              <input type="range" min={0} max={100} value={tabAudioVolume}
+                onChange={e => setTabAudioVolume(Number(e.target.value))}
+                className="w-full h-1.5 accent-emerald-400 cursor-pointer" />
+            </div>
+            <p className="text-[9px] text-neutral-500 text-center">{t('tabAudioHint') || 'Capture audio from a browser tab (e.g. Google Meet)'}</p>
           </div>
 
           {/* [DIAG] Test */}
@@ -2936,21 +3322,21 @@ export default function StudioPage({
           <div className="bg-white/[0.03] backdrop-blur-lg border border-white/10 rounded-2xl p-3 space-y-2">
             <h3 className="text-sm font-semibold text-neutral-300 flex items-center gap-2">
               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-              الحالة الحالية
+              {t('statusCard.title')}
             </h3>
             <div className="space-y-1.5 text-xs">
-              <div className="flex items-center justify-between"><span className="text-neutral-500">جاهز للتشغيل</span><span className="text-neutral-300 truncate max-w-[200px]">{(() => { const readyItem = mediaQueue.find(q => q.status === 'READY'); return readyItem ? (isMicOpen ? `${readyItem.title} — ينتظر غلق المايك` : readyItem.title) : 'لا توجد أغاني في قائمة الانتظار'; })()}</span></div>
-              <div className="flex items-center justify-between"><span className="text-neutral-500">قائمة الانتظار</span><span className="text-neutral-300">{mediaQueue.length > 0 ? `${mediaQueue.length} عنصر في الانتظار` : 'قائمة الانتظار فارغة'}</span></div>
-              <div className="flex items-center justify-between"><span className="text-neutral-500">الخلفية</span><span className="text-neutral-300 truncate max-w-[200px]">{activeBgTrack || 'لا يوجد موسيقى خلفية'}</span></div>
+              <div className="flex items-center justify-between"><span className="text-neutral-500">{t('statusCard.readyToPlay')}</span><span className="text-neutral-300 truncate max-w-[200px]">{(() => { const readyItem = mediaQueue.find(q => q.status === 'READY'); return readyItem ? (isVoiceLive ? t('statusCard.waitingMicForTitle', { title: readyItem.title }) : readyItem.title) : t('queue.noSongsInQueue'); })()}</span></div>
+              <div className="flex items-center justify-between"><span className="text-neutral-500">{t('statusCard.queueLabel')}</span><span className="text-neutral-300">{mediaQueue.length > 0 ? t('queue.itemsInQueue', { count: mediaQueue.length }) : t('queue.emptyQueue')}</span></div>
+              <div className="flex items-center justify-between"><span className="text-neutral-500">{t('statusCard.bgLabel')}</span><span className="text-neutral-300 truncate max-w-[200px]">{activeBgTrack || t('statusCard.noBgMusic')}</span></div>
             </div>
             {isConnected && (
-              <p className="text-[10px] text-neutral-500">{isMicOpen ? 'الميك مفتوح — العناصر المختارة تنتظر غلق الميك' : 'الميك مغلق — يمكن إضافة أغاني وفواصل وإعلانات للانتظار'}</p>
+              <p className="text-[10px] text-neutral-500">{isVoiceLive ? t('queue.micOpenWaiting') : t('queue.micClosedReady')}</p>
             )}
-            {!isConnected && <p className="text-[10px] text-neutral-500">في انتظار الاتصال بالخادم...</p>}
-            {isConnected && !isMicOpen && mediaQueue.some(q => q.status === 'READY' && q.mediaType === 'SONG') && (
+            {!isConnected && <p className="text-[10px] text-neutral-500">{t('connection.waitingForServer')}</p>}
+            {isConnected && !isVoiceLive && mediaQueue.some(q => q.status === 'READY' && q.mediaType === 'SONG') && (
               <button onClick={handleShuffle} className="w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-[10px] bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
-                تشغيل أغنية عشوائية من نفس القسم
+                {t('queue.shuffleFromCategory')}
               </button>
             )}
           </div>
@@ -2958,7 +3344,7 @@ export default function StudioPage({
           {/* ── DSP Panel ── */}
           <DspPanel
             currentParams={dspParams}
-            isMicOpen={isMicOpen}
+            isMicOpen={isVoiceLive}
             onParamsChange={(p: DspParams) => { setDspParams(p); applyDspParams(p); }}
             bypassed={dspBypassed}
             onBypassToggle={() => { setDspBypassed(b => !b); dspBypassRef.current = !dspBypassRef.current; }}
@@ -2974,34 +3360,42 @@ export default function StudioPage({
           <section className="bg-white/[0.03] backdrop-blur-lg border border-white/10 rounded-2xl p-3 flex-1">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold text-neutral-300 flex items-center gap-2">
-                📋 قائمة الانتظار
+                📋 {t('queue.title')}
                 {mediaQueue.length > 0 && <span className="px-2 py-0.5 bg-violet-500/20 text-violet-400 text-[10px] rounded-full">{mediaQueue.length}</span>}
               </h2>
               <div className="flex items-center gap-2">
                 <button onClick={() => setAutoQueue(v => !v)} className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-all ${autoQueue ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-neutral-800 text-neutral-500 border border-neutral-700'}`}>
-                  ⏭ {autoQueue ? 'تلقائي' : 'يدوي'}
+                  ⏭ {autoQueue ? t('queue.auto') : t('queue.manual')}
                 </button>
-                {mediaQueue.length > 0 && <button onClick={() => setMediaQueue([])} className="px-2 py-1 rounded-lg text-[10px] text-neutral-500 hover:text-red-400 bg-neutral-800 border border-neutral-700 transition-colors">مسح الكل</button>}
+                {mediaQueue.length > 0 && <button onClick={() => setMediaQueue([])} className="px-2 py-1 rounded-lg text-[10px] text-neutral-500 hover:text-red-400 bg-neutral-800 border border-neutral-700 transition-colors">{t('queue.clear')}</button>}
               </div>
             </div>
-            <p className="text-[10px] text-neutral-600 mb-2">⚠ قائمة الانتظار هنا تنظّم التشغيل فقط، ولا ترسل الصوت للبث المباشر بدون Audio Engine.</p>
+            <p className="text-[10px] text-neutral-600 mb-2">⚠ {t('queue.queueNote')}</p>
 
             {mediaQueue.length === 0 ? (
-              <p className="text-xs text-neutral-600 text-center py-6">لا توجد عناصر في قائمة الانتظار</p>
+              <p className="text-xs text-neutral-600 text-center py-6">{t('queue.empty')}</p>
             ) : (
               <div className="space-y-1.5">
                 {mediaQueue.map((item, idx) => {
                   const isPlaying = playingQueueId === item.id;
                   const isPausedManually = isPaused && pausedQueueItemRef.current?.id === item.id;
-                  const typeLabel = item.mediaType === 'SONG' ? 'أغنية' : item.mediaType === 'BREAK' ? 'فاصل' : 'إعلان';
-                  const sourceLabel = item.sourceType === 'ADMIN_DB' ? 'مكتبة Admin' : item.sourceType === 'PRESENTER_DB' ? 'مكتبة المقدم' : 'من الجهاز';
+                  const typeLabel = item.mediaType === 'SONG' ? t('mediaType.song') : item.mediaType === 'BREAK' ? t('mediaType.break') : t('mediaType.ad');
+                  const sourceLabel = item.sourceType === 'ADMIN_DB' ? t('sourceType.adminDb') : item.sourceType === 'PRESENTER_DB' ? t('sourceType.presenterDb') : t('sourceType.localDevice');
                   return (
-                    <div key={item.id} className={`rounded-xl border p-2.5 transition-all ${isPlaying ? 'bg-emerald-500/5 border-emerald-500/30' : 'bg-neutral-900/30 border-neutral-800 hover:bg-neutral-800/30'}`}>
+                    <div key={item.id} 
+                      draggable={!isPlaying}
+                      onDragStart={(e) => handleDragStart(e, idx)}
+                      onDragOver={(e) => handleDragOver(e, idx)}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDrop(e, idx)}
+                      className={`rounded-xl border p-2.5 transition-all ${isPlaying ? 'bg-emerald-500/5 border-emerald-500/30' : 'bg-neutral-900/30 border-neutral-800 hover:bg-neutral-800/30'} ${draggedQueueIndex === idx ? 'opacity-50 scale-95 border-emerald-500/50' : ''} ${dragOverQueueIndex === idx && draggedQueueIndex !== idx ? 'border-emerald-400 bg-emerald-500/10 -translate-y-1 shadow-[0_4px_10px_rgba(52,211,153,0.1)]' : ''} ${!isPlaying ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                    >
                       <div className="flex items-center gap-2">
-                        {/* Reorder */}
-                        <div className="flex flex-col gap-0.5">
-                          <button disabled={idx === 0} onClick={() => { const q = [...mediaQueue]; [q[idx-1], q[idx]] = [q[idx], q[idx-1]]; setMediaQueue(q); }} className="text-[10px] text-neutral-600 hover:text-neutral-300 disabled:opacity-20">↑</button>
-                          <button disabled={idx === mediaQueue.length - 1} onClick={() => { const q = [...mediaQueue]; [q[idx], q[idx+1]] = [q[idx+1], q[idx]]; setMediaQueue(q); }} className="text-[10px] text-neutral-600 hover:text-neutral-300 disabled:opacity-20">↓</button>
+                        {/* Drag Handle & Reorder */}
+                        <div className="flex flex-col gap-0.5 items-center justify-center">
+                          <button disabled={idx === 0} onClick={() => { const q = [...mediaQueue]; [q[idx-1], q[idx]] = [q[idx], q[idx-1]]; setMediaQueue(q); }} className="text-[10px] text-neutral-600 hover:text-neutral-300 disabled:opacity-20 cursor-pointer">↑</button>
+                          <svg className="w-3 h-3 text-neutral-600 cursor-grab active:cursor-grabbing" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8h16M4 16h16" /></svg>
+                          <button disabled={idx === mediaQueue.length - 1} onClick={() => { const q = [...mediaQueue]; [q[idx], q[idx+1]] = [q[idx+1], q[idx]]; setMediaQueue(q); }} className="text-[10px] text-neutral-600 hover:text-neutral-300 disabled:opacity-20 cursor-pointer">↓</button>
                         </div>
                         <span className="text-[10px] text-neutral-600 font-mono">#{idx+1}</span>
                         <div className="flex-1 min-w-0">
@@ -3009,23 +3403,23 @@ export default function StudioPage({
                           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                             <span className="px-1.5 py-0.5 rounded text-[9px] bg-neutral-800 text-neutral-400">{typeLabel}</span>
                             <span className="px-1.5 py-0.5 rounded text-[9px] bg-neutral-800 text-neutral-500">{sourceLabel}</span>
-                            {item.status === 'READY' && <span className="px-1.5 py-0.5 rounded text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">جاهز</span>}
-                            {item.status === 'READY_AFTER_MIC_CLOSE' && <span className="px-1.5 py-0.5 rounded text-[9px] bg-amber-500/10 text-amber-400 border border-amber-500/20">ينتظر غلق المايك</span>}
-                            {item.status === 'PREVIEW_ONLY' && <span className="px-1.5 py-0.5 rounded text-[9px] bg-neutral-700 text-neutral-400">معاينة فقط</span>}
-                            {isPlaying && <span className="px-1.5 py-0.5 rounded text-[9px] bg-emerald-500/20 text-emerald-400 animate-pulse">يعزف الآن</span>}
+                            {item.status === 'READY' && <span className="px-1.5 py-0.5 rounded text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{t('queue.ready')}</span>}
+                            {item.status === 'READY_AFTER_MIC_CLOSE' && <span className="px-1.5 py-0.5 rounded text-[9px] bg-amber-500/10 text-amber-400 border border-amber-500/20">{t('queue.waitingMicClose')}</span>}
+                            {item.status === 'PREVIEW_ONLY' && <span className="px-1.5 py-0.5 rounded text-[9px] bg-neutral-700 text-neutral-400">{t('queue.previewOnly')}</span>}
+                            {isPlaying && <span className="px-1.5 py-0.5 rounded text-[9px] bg-emerald-500/20 text-emerald-400 animate-pulse">{t('queue.nowPlaying')}</span>}
                           </div>
                         </div>
                         {/* Play/Pause/Resume */}
                         {isPlaying ? (
-                          <button onClick={() => pauseQueueItem()} className="px-2.5 py-1.5 rounded-lg text-[10px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/25 transition-colors">⏸ توقف</button>
+                          <button onClick={() => pauseQueueItem()} className="px-2.5 py-1.5 rounded-lg text-[10px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/25 transition-colors">⏸ {t('queue.pause')}</button>
                         ) : isPausedManually ? (
-                          <button onClick={() => playQueueItem(item)} className="px-2.5 py-1.5 rounded-lg text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 transition-colors">▶ استمرار</button>
-                        ) : isMicOpen ? (
-                          <button disabled className="px-2.5 py-1.5 rounded-lg text-[10px] font-semibold bg-neutral-800 text-neutral-500 border border-neutral-700 opacity-50 cursor-not-allowed">▶ انتظار</button>
+                          <button onClick={() => playQueueItem(item)} className="px-2.5 py-1.5 rounded-lg text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 transition-colors">▶ {t('queue.resume')}</button>
+                        ) : isVoiceLive ? (
+                          <button disabled className="px-2.5 py-1.5 rounded-lg text-[10px] font-semibold bg-neutral-800 text-neutral-500 border border-neutral-700 opacity-50 cursor-not-allowed">▶ {t('queue.waitingForMic')}</button>
                         ) : item.status === 'READY' || item.status === 'PREVIEW_ONLY' ? (
-                          <button onClick={() => playQueueItem(item)} className="px-2.5 py-1.5 rounded-lg text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 transition-colors">▶ تشغيل</button>
+                          <button onClick={() => playQueueItem(item)} className="px-2.5 py-1.5 rounded-lg text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 transition-colors">▶ {t('queue.play')}</button>
                         ) : null}
-                        <button onClick={() => removeQueueItem(item.id)} title="حذف من القائمة" className="w-8 h-8 flex items-center justify-center rounded-md text-neutral-600 hover:text-red-400 hover:bg-red-500/10 transition-colors text-sm">✕</button>
+                        <button onClick={() => removeQueueItem(item.id)} title={t('queue.removeFromQueue')} className="w-8 h-8 flex items-center justify-center rounded-md text-neutral-600 hover:text-red-400 hover:bg-red-500/10 transition-colors text-sm">✕</button>
                       </div>
                       {/* Seek bar */}
                       {playbackProgress && playbackProgress.id === item.id && (
@@ -3047,41 +3441,41 @@ export default function StudioPage({
           {/* ── SFX Panel ── */}
           <section className="bg-white/[0.03] backdrop-blur-lg border border-white/10 rounded-2xl p-3">
             <div className="flex items-center justify-between mb-2">
-              <h2 className="text-sm font-semibold text-neutral-300">💥 مؤثرات صوتية (SFX)</h2>
+              <h2 className="text-sm font-semibold text-neutral-300">💥 {t('sfx.title')}</h2>
               <div className="flex items-center gap-2">
                 {sfxPreloadStatus === 'loading' && <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>}
-                {sfxPreloadStatus === 'ready' && <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 text-[9px] rounded-full border border-emerald-500/20">جاهز</span>}
+                {sfxPreloadStatus === 'ready' && <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 text-[9px] rounded-full border border-emerald-500/20">{t('sfx.ready')}</span>}
               </div>
             </div>
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-[10px] text-neutral-500">الصوت</span>
+              <span className="text-[10px] text-neutral-500">{t('sfx.volume')}</span>
               <input type="range" min={0} max={1} step={0.01} value={sfxVolume} onChange={e => setSfxVolume(parseFloat(e.target.value))} className="flex-1 h-1 accent-violet-400 cursor-pointer" />
               <span className="text-[10px] text-neutral-400 font-mono w-8">{Math.round(sfxVolume * 100)}%</span>
             </div>
             {sfxCategories.length === 0 ? (
               <div className="text-center py-4">
-                <p className="text-xs text-neutral-500">لا توجد مؤثرات صوتية</p>
-                <p className="text-[10px] text-neutral-600">أضف مؤثرات من لوحة الإدارة</p>
+                <p className="text-xs text-neutral-500">{t('sfx.empty')}</p>
+                <p className="text-[10px] text-neutral-600">{t('sfx.addFromAdmin')}</p>
               </div>
             ) : sfxCategories.map(cat => (
               <div key={cat.id} className="mb-2">
                 <button onClick={() => setExpandedCategories(prev => ({ ...prev, [`sfx_${cat.id}`]: !prev[`sfx_${cat.id}`] }))} className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg bg-neutral-900/40 hover:bg-neutral-800/40 transition-colors mb-1">
                   <span className="text-xs text-neutral-300">{cat.name}</span>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[9px] text-neutral-500">{cat.tracks.length} مؤثر</span>
+                    <span className="text-[9px] text-neutral-500">{t('sfx.effectCount', { count: cat.tracks.length })}</span>
                     <svg className={`w-3 h-3 text-neutral-500 transition-transform ${expandedCategories[`sfx_${cat.id}`] ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
                   </div>
                 </button>
                 {expandedCategories[`sfx_${cat.id}`] && (
                   <div className="grid grid-cols-3 gap-1.5 px-1">
-                    {cat.tracks.map(t => {
-                      const isActive = activeSfxIds.has(t.id);
+                    {cat.tracks.map(tr => {
+                      const isActive = activeSfxIds.has(tr.id);
                       return (
-                        <button key={t.id} onClick={() => { if (isActive) stopSfx(t.id); else playSfx(t.id); }}
+                        <button key={tr.id} onClick={() => { if (isActive) stopSfx(tr.id); else playSfx(tr.id); }}
                           className={`px-2 py-2 rounded-lg text-[10px] font-medium truncate transition-all ${isActive ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-[0_0_10px_rgba(52,211,153,0.2)]' : 'bg-neutral-800/60 text-neutral-400 border border-neutral-700/50 hover:bg-neutral-700/60 hover:text-neutral-200'}`}
                         >
                           {isActive && <span className="inline-block w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse ml-1"></span>}
-                          {t.title}
+                          {tr.title}
                         </button>
                       );
                     })}
@@ -3089,7 +3483,7 @@ export default function StudioPage({
                 )}
               </div>
             ))}
-            <button onClick={stopAllSfx} className="w-full mt-2 px-3 py-2 rounded-xl text-xs font-medium bg-neutral-800/60 text-neutral-400 border border-neutral-700/50 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 transition-all">⬛ إيقاف جميع المؤثرات</button>
+            <button onClick={stopAllSfx} className="w-full mt-2 px-3 py-2 rounded-xl text-xs font-medium bg-neutral-800/60 text-neutral-400 border border-neutral-700/50 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 transition-all">⬛ {t('sfx.stopAll')}</button>
           </section>
         </div>
 
@@ -3097,33 +3491,44 @@ export default function StudioPage({
         <div className={`${mobileTab === 'queue' ? 'block' : 'hidden'} lg:hidden`}>
           <section className="bg-white/[0.03] backdrop-blur-lg border border-white/10 rounded-2xl p-3">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-neutral-300 flex items-center gap-2">📋 قائمة الانتظار {mediaQueue.length > 0 && <span className="px-2 py-0.5 bg-violet-500/20 text-violet-400 text-[10px] rounded-full">{mediaQueue.length}</span>}</h2>
+              <h2 className="text-sm font-semibold text-neutral-300 flex items-center gap-2">📋 {t('queue.title')} {mediaQueue.length > 0 && <span className="px-2 py-0.5 bg-violet-500/20 text-violet-400 text-[10px] rounded-full">{mediaQueue.length}</span>}</h2>
               <div className="flex items-center gap-2">
-                <button onClick={() => setAutoQueue(v => !v)} className={`px-2.5 py-1 rounded-lg text-[10px] font-medium ${autoQueue ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-neutral-800 text-neutral-500 border border-neutral-700'}`}>⏭ {autoQueue ? 'تلقائي' : 'يدوي'}</button>
-                {mediaQueue.length > 0 && <button onClick={() => setMediaQueue([])} className="px-2 py-1 rounded-lg text-[10px] text-neutral-500 hover:text-red-400 bg-neutral-800 border border-neutral-700">مسح الكل</button>}
+                <button onClick={() => setAutoQueue(v => !v)} className={`px-2.5 py-1 rounded-lg text-[10px] font-medium ${autoQueue ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-neutral-800 text-neutral-500 border border-neutral-700'}`}>⏭ {autoQueue ? t('queue.auto') : t('queue.manual')}</button>
+                {mediaQueue.length > 0 && <button onClick={() => setMediaQueue([])} className="px-2 py-1 rounded-lg text-[10px] text-neutral-500 hover:text-red-400 bg-neutral-800 border border-neutral-700">{t('queue.clear')}</button>}
               </div>
             </div>
             {/* Queue volume */}
             <div className="bg-neutral-900/40 border border-green-500/20 rounded-xl px-3 py-2.5 mb-3">
-              <div className="flex items-center justify-between mb-1"><span className="text-xs font-semibold text-green-300">مستوى صوت قائمة الانتظار</span><span className="text-xs font-mono text-green-400">{queueVolume}%</span></div>
+              <div className="flex items-center justify-between mb-1"><span className="text-xs font-semibold text-green-300">{t('queue.queueVolumeLabel')}</span><span className="text-xs font-mono text-green-400">{queueVolume}%</span></div>
               <input type="range" min={0} max={100} value={queueVolume} onChange={e => setQueueVolume(Number(e.target.value))} className="w-full h-1.5 accent-green-400 cursor-pointer" />
             </div>
             {mediaQueue.length === 0 ? (
-              <p className="text-xs text-neutral-600 text-center py-6">لا توجد عناصر في قائمة الانتظار</p>
+              <p className="text-xs text-neutral-600 text-center py-6">{t('queue.empty')}</p>
             ) : (
               <div className="space-y-1.5">
                 {mediaQueue.map((item, idx) => {
                   const isPlaying = playingQueueId === item.id;
                   const isPausedManually = isPaused && pausedQueueItemRef.current?.id === item.id;
-                  const typeLabel = item.mediaType === 'SONG' ? 'أغنية' : item.mediaType === 'BREAK' ? 'فاصل' : 'إعلان';
+                  const typeLabel = item.mediaType === 'SONG' ? t('mediaType.song') : item.mediaType === 'BREAK' ? t('mediaType.break') : t('mediaType.ad');
                   return (
-                    <div key={item.id} className={`rounded-xl border p-2.5 ${isPlaying ? 'bg-emerald-500/5 border-emerald-500/30' : 'bg-neutral-900/30 border-neutral-800'}`}>
+                    <div key={item.id} 
+                      onTouchStart={!isPlaying ? (e) => handleTouchStart(e, idx) : undefined}
+                      onTouchMove={!isPlaying ? handleTouchMove : undefined}
+                      onTouchEnd={!isPlaying ? handleTouchEnd : undefined}
+                      className={`rounded-xl border p-2.5 transition-all ${isPlaying ? 'bg-emerald-500/5 border-emerald-500/30' : 'bg-neutral-900/30 border-neutral-800'} ${draggedQueueIndex === idx ? 'opacity-50 scale-95 border-emerald-500/50 z-50 relative shadow-2xl' : ''} ${dragOverQueueIndex === idx && draggedQueueIndex !== idx ? 'border-emerald-400 bg-emerald-500/10 -translate-y-1 shadow-[0_4px_10px_rgba(52,211,153,0.1)]' : ''}`}
+                    >
                       <div className="flex items-center gap-2">
+                        {/* Mobile Drag Handle */}
+                        {!isPlaying && (
+                          <div className="flex items-center justify-center pr-1 text-neutral-500 active:text-neutral-300">
+                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8h16M4 16h16" /></svg>
+                          </div>
+                        )}
                         <span className="text-[10px] text-neutral-600 font-mono">#{idx+1}</span>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs text-neutral-200 truncate">{item.title}</p>
                           <span className="px-1.5 py-0.5 rounded text-[9px] bg-neutral-800 text-neutral-400">{typeLabel}</span>
-                          {isPlaying && <span className="px-1.5 py-0.5 rounded text-[9px] bg-emerald-500/20 text-emerald-400 animate-pulse mr-1">يعزف الآن</span>}
+                          {isPlaying && <span className="px-1.5 py-0.5 rounded text-[9px] bg-emerald-500/20 text-emerald-400 animate-pulse mr-1">{t('queue.nowPlaying')}</span>}
                         </div>
                         {isPlaying ? <button onClick={() => pauseQueueItem()} className="px-2 py-1 rounded-lg text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/25">⏸</button>
                         : isPausedManually ? <button onClick={() => playQueueItem(item)} className="px-2 py-1 rounded-lg text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">▶</button>
@@ -3149,43 +3554,116 @@ export default function StudioPage({
         {/* ── Mobile SFX Tab (lg:hidden) ── */}
         <div className={`${mobileTab === 'sfx' ? 'block' : 'hidden'} lg:hidden`}>
           <section className="bg-white/[0.03] backdrop-blur-lg border border-white/10 rounded-2xl p-3">
-            <h2 className="text-sm font-semibold text-neutral-300 mb-2">💥 مؤثرات صوتية (SFX)</h2>
+            <h2 className="text-sm font-semibold text-neutral-300 mb-2">💥 {t('sfx.title')}</h2>
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-[10px] text-neutral-500">الصوت</span>
+              <span className="text-[10px] text-neutral-500">{t('sfx.volume')}</span>
               <input type="range" min={0} max={1} step={0.01} value={sfxVolume} onChange={e => setSfxVolume(parseFloat(e.target.value))} className="flex-1 h-1 accent-violet-400 cursor-pointer" />
               <span className="text-[10px] text-neutral-400">{Math.round(sfxVolume * 100)}%</span>
             </div>
             {sfxCategories.length === 0 ? (
-              <div className="text-center py-4"><p className="text-xs text-neutral-500">لا توجد مؤثرات صوتية</p><p className="text-[10px] text-neutral-600">أضف مؤثرات من لوحة الإدارة</p></div>
+              <div className="text-center py-4"><p className="text-xs text-neutral-500">{t('sfx.empty')}</p><p className="text-[10px] text-neutral-600">{t('sfx.addFromAdmin')}</p></div>
             ) : sfxCategories.map(cat => (
               <div key={cat.id} className="mb-2">
                 <button onClick={() => setExpandedCategories(prev => ({ ...prev, [`sfx_m_${cat.id}`]: !prev[`sfx_m_${cat.id}`] }))} className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg bg-neutral-900/40 hover:bg-neutral-800/40 transition-colors mb-1">
                   <span className="text-xs text-neutral-300">{cat.name}</span>
-                  <span className="text-[9px] text-neutral-500">{cat.tracks.length} مؤثر</span>
+                  <span className="text-[9px] text-neutral-500">{t('sfx.effectCount', { count: cat.tracks.length })}</span>
                 </button>
                 {expandedCategories[`sfx_m_${cat.id}`] && (
                   <div className="grid grid-cols-3 gap-1.5 px-1">
-                    {cat.tracks.map(t => {
-                      const isActive = activeSfxIds.has(t.id);
+                    {cat.tracks.map(tr => {
+                      const isActive = activeSfxIds.has(tr.id);
                       return (
-                        <button key={t.id} onClick={() => { if (isActive) stopSfx(t.id); else playSfx(t.id); }}
+                        <button key={tr.id} onClick={() => { if (isActive) stopSfx(tr.id); else playSfx(tr.id); }}
                           className={`px-2 py-2 rounded-lg text-[10px] font-medium truncate transition-all ${isActive ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-neutral-800/60 text-neutral-400 border border-neutral-700/50 hover:bg-neutral-700/60'}`}
-                        >{t.title}</button>
+                        >{tr.title}</button>
                       );
                     })}
                   </div>
                 )}
               </div>
             ))}
-            <button onClick={stopAllSfx} className="w-full mt-2 px-3 py-2 rounded-xl text-xs bg-neutral-800/60 text-neutral-400 border border-neutral-700/50 hover:bg-red-500/10 hover:text-red-400 transition-all">⬛ إيقاف جميع المؤثرات</button>
+            <button onClick={stopAllSfx} className="w-full mt-2 px-3 py-2 rounded-xl text-xs bg-neutral-800/60 text-neutral-400 border border-neutral-700/50 hover:bg-red-500/10 hover:text-red-400 transition-all">⬛ {t('sfx.stopAll')}</button>
           </section>
         </div>
+
+        {/* ─────────────────────────────────────────────────────────────────────
+            FAR RIGHT COLUMN — Live Messages
+           ───────────────────────────────────────────────────────────────────── */}
+        {!!scheduledStationId && (
+          <div className={`${mobileTab === 'messages' ? 'block' : 'hidden'} xl:flex xl:flex-col lg:hidden lg:overflow-y-auto lg:max-h-full`}>
+            <section className="bg-white/[0.03] backdrop-blur-lg border border-white/10 rounded-2xl p-3 flex-1 flex flex-col min-h-[400px]">
+              <div className="flex items-center justify-between mb-3 shrink-0">
+                <h2 className="text-sm font-semibold text-neutral-300 flex items-center gap-2">
+                  💬 {t('LiveMessaging.title')}
+                  {liveMessages.length > 0 && <span className="px-2 py-0.5 bg-red-500/20 text-red-400 text-[10px] rounded-full">{liveMessages.length}</span>}
+                </h2>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={async () => {
+                      const currentStationId = scheduledStationId;
+                      if (!currentStationId) return;
+                      const nextState = !isMessagingEnabled;
+                      setIsMessagingEnabled(nextState);
+                      try {
+                        await fetch("/api/studio/messaging/toggle", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ stationId: currentStationId, isEnabled: nextState }),
+                        });
+                      } catch {
+                        setIsMessagingEnabled(!nextState); // revert on error
+                      }
+                    }}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${isMessagingEnabled ? 'bg-emerald-500' : 'bg-neutral-600'}`}
+                  >
+                    <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${dir === 'rtl' ? (isMessagingEnabled ? '-translate-x-5' : '-translate-x-1') : (isMessagingEnabled ? 'translate-x-5' : 'translate-x-1')}`} />
+                  </button>
+                  <button 
+                    onClick={() => setLiveMessages([])} 
+                    className="px-2 py-1 rounded-lg text-[10px] text-neutral-500 hover:text-red-400 bg-neutral-800 border border-neutral-700 transition-colors"
+                  >
+                    {t('LiveMessaging.clear')}
+                  </button>
+                </div>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-0">
+                {liveMessages.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-neutral-500 text-xs py-10 opacity-50">
+                    <div className="text-2xl mb-2">📭</div>
+                    {t('LiveMessaging.empty')}
+                  </div>
+                ) : (
+                  liveMessages.map((msg) => (
+                    <div key={msg.id} className="bg-neutral-900/60 border border-neutral-800 rounded-lg p-2 flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="font-semibold text-sm text-neutral-200 truncate">{msg.name || msg.senderName}</div>
+                        <div className="text-[10px] text-neutral-500 whitespace-nowrap">
+                          {new Date(msg.createdAt).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                      {(msg.country || msg.phoneNumber) && (
+                        <div className="flex items-center gap-2 text-[10px] text-neutral-400 font-mono">
+                          {msg.country && <span>{getFlagEmoji(msg.country)} {msg.country.toUpperCase()}</span>}
+                          {msg.phoneNumber && <span>{msg.phoneNumber}</span>}
+                        </div>
+                      )}
+                      <p className="text-xs text-neutral-300 whitespace-pre-wrap leading-relaxed mt-1">
+                        {msg.message}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+          </div>
+        )}
 
       </main>
 
       {/* ── Footer ── */}
       <footer className="text-center py-3">
-        <p className="text-neutral-600 text-xs">قم بالاتصال بالخادم أولاً لتفعيل البث، ثم اضغط على زر الميكروفون</p>
+        <p className="text-neutral-600 text-xs">{t('connection.connectFirst')}</p>
       </footer>
     </div>
   );

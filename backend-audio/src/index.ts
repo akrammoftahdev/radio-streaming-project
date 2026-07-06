@@ -59,7 +59,7 @@ const DEV_SHOUT_BITRATE = parseInt(process.env.SHOUTCAST_BITRATE ?? '64', 10);
 // ── FFmpeg binary path ────────────────────────────────────────────────────────
 // Defaults to 'ffmpeg' (system PATH). Override with FFMPEG_PATH env var for
 // environments where ffmpeg is installed at a non-standard location.
-// On the VPS: FFMPEG_PATH=/home/egyona/bin/ffmpeg
+// On the VPS: FFMPEG_PATH=/usr/bin/ffmpeg
 const FFMPEG_BIN = process.env.FFMPEG_PATH ?? 'ffmpeg';
 
 // ── SonicPanel credential shape — matches what Next.js validate returns ───────
@@ -209,6 +209,44 @@ function notifySessionError(payload: SessionErrorPayload): void {
 // ── HTTP server ───────────────────────────────────────────────────────────────
 
 const server = http.createServer((req, res) => {
+  // CORS for dev
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'OPTIONS, POST, GET');
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  // Internal Endpoint to receive Listener Messages
+  if (req.method === 'POST' && req.url === '/internal/broadcast-message') {
+    let body = '';
+    req.on('data', chunk => { body += chunk.toString(); });
+    req.on('end', () => {
+      try {
+        const payload = JSON.parse(body);
+        if (payload.type === 'new_listener_message' && payload.stationId && payload.message) {
+          let sentCount = 0;
+          for (const client of wss.clients) {
+            if ((client as any).stationId === payload.stationId && client.readyState === WebSocket.OPEN) {
+              client.send(JSON.stringify({ type: 'new_listener_message', message: payload.message }));
+              sentCount++;
+            }
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, sentCount }));
+        } else {
+          res.writeHead(400);
+          res.end(JSON.stringify({ error: 'Invalid payload' }));
+        }
+      } catch (e) {
+        res.writeHead(400);
+        res.end(JSON.stringify({ error: 'Bad JSON' }));
+      }
+    });
+    return;
+  }
+
   res.writeHead(200);
   res.end('EGONAIR Backend Audio Service\n');
 });
@@ -382,7 +420,8 @@ wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
   }
 
   activeSessions.set(presenterId, ws);
-  console.log(`[+] Presenter ${presenterId} connected from ${clientIp}`);
+  (ws as any).stationId = validatedStationId; // Attach stationId to socket for listener messages
+  console.log(`[+] Presenter ${presenterId} connected from ${clientIp} (Station: ${validatedStationId || 'none'})`);
   if (scheduleId) console.log(`    Schedule: ${scheduleId}`);
 
   // ── Status helper: send JSON status to browser (never blocks, never throws) ─
