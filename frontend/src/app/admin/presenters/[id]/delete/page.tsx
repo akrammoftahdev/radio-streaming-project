@@ -16,8 +16,14 @@ import {
 } from "./actions";
 import { PresenterWizardClient } from "./wizard-client";
 import { CleanupButton } from "./cleanup-button";
+import { getTranslations } from "next-intl/server";
 
-export const metadata = { title: "حذف / إدارة المذيع - الإدارة - EGONAIR" };
+
+export async function generateMetadata() {
+  const t = await getTranslations("admin.presenters");
+  const tc = await getTranslations("common");
+  return { title: t("deletePageTitle") };
+}
 
 export default async function PresenterDeletePage({
   params,
@@ -30,6 +36,8 @@ export default async function PresenterDeletePage({
   if ((session.user as { role?: string }).role !== "ADMIN") redirect("/login");
 
   const { id: presenterId } = await params;
+  const t = await getTranslations("admin.presenters");
+  const tc = await getTranslations("common");
 
   // ── Load presenter ────────────────────────────────────────────────────────
   const presenter = await prisma.user.findUnique({
@@ -72,116 +80,116 @@ export default async function PresenterDeletePage({
   const depRows: DepRow[] = [
     // ── BLOCKING ─────────────────────────────────────────────────────────────
     {
-      label:          "برامج (نشطة / إجمالي)",
+      label:          t("depPrograms"),
       count:          deps.programs,
       blockerCount:   deps.activePrograms,
       blocks:         deps.activePrograms > 0,
       viewLink:       `/admin/presenters/${presenterId}/edit`,
       cleanupAction:  deps.activePrograms > 0 ? disableAllPresenterPrograms : undefined,
-      cleanupLabel:   "تعطيل كل البرامج",
-      cleanupConfirm: "سيتم تعطيل كل برامج هذا المذيع. التسجيلات لن تُحذف.",
+      cleanupLabel:   t("cleanupPrograms"),
+      cleanupConfirm: t("cleanupProgramsConfirm"),
       note: deps.activePrograms > 0
-        ? `⚠ ${deps.activePrograms} برنامج نشط يمنع الحذف. انقر "تعطيل كل البرامج" لتصفير العداد المانع.`
+        ? t("noteProgramsActive", { count: deps.activePrograms, cleanupPrograms: t("cleanupPrograms") })
         : deps.programs > 0
-          ? `ℹ ${deps.programs} برنامج معطّل محفوظ للتاريخ — لا يمنع الحذف.`
+          ? t("noteProgramsInactive", { total: deps.programs })
           : undefined,
     },
     {
-      label:    "تسجيلات",
+      label:    t("depRecordings"),
       count:    deps.recordings,
       blocks:   deps.recordings > 0,
       viewLink: `/admin/recordings?presenterId=${presenterId}`,
       note: deps.recordings > 0
-        ? "🔴 التسجيلات تمنع الحذف النهائي (قيد قاعدة البيانات). احذف التسجيلات يدوياً من صفحة التسجيلات أولاً."
+        ? t("noteRecordingsBlocking")
         : undefined,
     },
     {
-      label:          "جلسات بث",
+      label:          t("depLiveSessions"),
       count:          deps.liveSessions,
       blocks:         deps.liveSessions > 0,
       cleanupAction:  deps.liveSessions > 0 ? cleanupPresenterLiveSessions : undefined,
-      cleanupLabel:   "تنظيف جلسات البث",
-      cleanupConfirm: "هل أنت متأكد؟ سيتم حذف سجلات جلسات البث التاريخية لهذا المذيع. لن يتم حذف التسجيلات الصوتية من هنا.",
+      cleanupLabel:   t("cleanupLiveSessions"),
+      cleanupConfirm: t("cleanupLiveSessionsConfirm"),
       note: deps.liveSessions > 0
-        ? "جلسات البث تمنع الحذف النهائي حتى يتم تنظيفها. يجب حذف التسجيلات أولاً إن وجدت."
+        ? t("noteLiveSessionsBlocking")
         : undefined,
     },
     {
-      label:          "جداول بث قديمة",
+      label:          t("depLegacySchedules"),
       count:          deps.schedules,
       blocks:         deps.schedules > 0,
       cleanupAction:  deps.schedules > 0 ? deleteLegacyBroadcastSchedules : undefined,
-      cleanupLabel:   "تنظيف الجداول القديمة",
-      cleanupConfirm: "سيتم حذف جداول البث القديمة لهذا المذيع. لا يمكن التراجع.",
+      cleanupLabel:   t("cleanupLegacySchedules"),
+      cleanupConfirm: t("cleanupLegacySchedulesConfirm"),
     },
     // ── NON-BLOCKING (cleaned in hard delete transaction if not done manually) ─
     {
-      label:          "روابط المحطات",
+      label:          t("depStationLinks"),
       count:          deps.stations,
       blocks:         false,
       cleanupAction:  deps.stations > 0 ? unlinkAllPresenterStations : undefined,
-      cleanupLabel:   "فصل عن كل المحطات",
-      cleanupConfirm: "سيتم إلغاء ارتباط المذيع بجميع المحطات.",
+      cleanupLabel:   t("unlinkAllStations"),
+      cleanupConfirm: t("unlinkAllStationsConfirm"),
     },
     {
-      label:          "راديوهات DJ مباشر",
+      label:          t("depDjRadios"),
       count:          deps.djRadios,
       blocks:         false,
       cleanupAction:  deps.djRadios > 0 ? deletePresenterDirectDjRadios : undefined,
-      cleanupLabel:   "حذف راديوهات DJ",
-      cleanupConfirm: "سيتم حذف كل إذاعات DJ المباشر لهذا المذيع. لا يمكن التراجع.",
+      cleanupLabel:   t("deleteDjRadios"),
+      cleanupConfirm: t("deleteDjRadiosConfirm"),
     },
     {
-      label:          "بيانات SonicPanel",
+      label:          t("depSonicPanel"),
       count:          deps.creds,
       blocks:         false,
       cleanupAction:  deps.creds > 0 ? deletePresenterLegacyCredentials : undefined,
-      cleanupLabel:   "حذف بيانات SonicPanel",
-      cleanupConfirm: "سيتم حذف بيانات اعتماد SonicPanel لهذا المذيع.",
+      cleanupLabel:   t("deleteSonicPanel"),
+      cleanupConfirm: t("deleteSonicPanelConfirm"),
     },
     {
-      label:          "صلاحية البث",
+      label:          t("depValidity"),
       count:          deps.validity,
       blocks:         false,
       cleanupAction:  deps.validity > 0 ? deletePresenterValidity : undefined,
-      cleanupLabel:   "حذف صلاحية البث",
-      cleanupConfirm: "سيتم حذف بيانات صلاحية البث لهذا المذيع.",
+      cleanupLabel:   t("deleteValidity"),
+      cleanupConfirm: t("deleteValidityConfirm"),
     },
     {
-      label:  "ملف المذيع",
+      label:  t("depProfile"),
       count:  deps.profile,
       blocks: false,
-      note:   deps.profile > 0 ? "ℹ يُحذف تلقائياً ضمن عملية الحذف النهائية." : undefined,
+      note:   deps.profile > 0 ? t("profileAutoDelete") : undefined,
     },
     {
-      label:  "سجلات الوصول",
+      label:  t("depAccessLogs"),
       count:  deps.accessLogs,
       blocks: false,
-      note:   deps.accessLogs > 0 ? "ℹ تُحذف تلقائياً ضمن عملية الحذف النهائية." : undefined,
+      note:   deps.accessLogs > 0 ? t("accessLogsAutoDelete") : undefined,
     },
   ];
 
   // List of active blockers for the summary
   const activeBlockers: string[] = [
-    deps.activePrograms > 0 ? `${deps.activePrograms} برنامج نشط`       : "",
-    deps.recordings     > 0 ? `${deps.recordings} تسجيل`                : "",
-    deps.liveSessions   > 0 ? `${deps.liveSessions} جلسة بث تاريخية`    : "",
-    deps.schedules      > 0 ? `${deps.schedules} جدول بث قديم`          : "",
+    deps.activePrograms > 0 ? t("blockerActivePrograms", { count: deps.activePrograms })       : "",
+    deps.recordings     > 0 ? t("blockerRecordings", { count: deps.recordings })                : "",
+    deps.liveSessions   > 0 ? t("blockerLiveSessions", { count: deps.liveSessions })    : "",
+    deps.schedules      > 0 ? t("blockerLegacySchedules", { count: deps.schedules })          : "",
   ].filter(Boolean);
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 p-6 md:p-10" dir="rtl">
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 p-6 md:p-10">
       {/* ── Breadcrumb ── */}
       <div className="flex items-center gap-2 text-sm text-neutral-500 mb-8">
-        <Link href="/admin" className="hover:text-neutral-300 transition-colors">الإدارة</Link>
+        <Link href="/admin" className="hover:text-neutral-300 transition-colors">{tc("dashboard")}</Link>
         <span>/</span>
-        <Link href="/admin/presenters" className="hover:text-neutral-300 transition-colors">المذيعون</Link>
+        <Link href="/admin/presenters" className="hover:text-neutral-300 transition-colors">{tc("presenters")}</Link>
         <span>/</span>
         <Link href={`/admin/presenters/${presenterId}/edit`} className="hover:text-neutral-300 transition-colors">
           {presenter.username}
         </Link>
         <span>/</span>
-        <span className="text-red-400">إدارة الحذف</span>
+        <span className="text-red-400">{t("manageDelete")}</span>
       </div>
 
       <div className="max-w-2xl mx-auto space-y-6">
@@ -199,7 +207,7 @@ export default async function PresenterDeletePage({
                   ? "bg-emerald-950/50 text-emerald-400 border-emerald-700/40"
                   : "bg-neutral-800 text-neutral-500 border-neutral-700"
               }`}>
-                {presenter.isActive ? "نشط" : "معطّل"}
+                {presenter.isActive ? tc("active") : tc("inactive")}
               </span>
               <span className="text-xs text-neutral-600">{presenter.presenterMode}</span>
             </div>
@@ -209,7 +217,7 @@ export default async function PresenterDeletePage({
         {/* ── Blocker summary (only when unsafe) ── */}
         {!isHardDeleteSafe && activeBlockers.length > 0 && (
           <div className="bg-red-950/30 border border-red-800/50 rounded-2xl px-5 py-4">
-            <p className="text-sm font-semibold text-red-400 mb-1">⛔ الحذف النهائي محظور</p>
+            <p className="text-sm font-semibold text-red-400 mb-1">{t("hardDeleteBlocked")}</p>
             <p className="text-xs text-red-300/80">
               {activeBlockers.join(" · ")}
             </p>
@@ -218,9 +226,9 @@ export default async function PresenterDeletePage({
 
         {/* ── Dependency checklist ── */}
         <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
-          <h2 className="text-sm font-semibold text-neutral-300 mb-1">فحص التبعيات وأدوات التنظيف</h2>
+          <h2 className="text-sm font-semibold text-neutral-300 mb-1">{t("dependencyCheckTitle")}</h2>
           <p className="text-xs text-neutral-500 mb-4">
-            البنود الحمراء تمنع الحذف النهائي. نظّف ما يمكنك ثم اضغط "حذف نهائي" عند توفر الشروط.
+            {t("dependencyWarning")}
           </p>
           <ul className="space-y-2">
             {depRows.map((row) => {
@@ -262,7 +270,7 @@ export default async function PresenterDeletePage({
                           href={row.viewLink}
                           className="text-xs text-indigo-400 hover:text-indigo-300 underline underline-offset-2 transition-colors whitespace-nowrap"
                         >
-                          عرض
+                          {t("viewBtn")}
                         </Link>
                       )}
                       {/* Cleanup button */}
@@ -303,7 +311,7 @@ export default async function PresenterDeletePage({
             href={`/admin/presenters/${presenterId}/edit`}
             className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors"
           >
-            ← العودة إلى صفحة التعديل
+            {t("backToEdit")}
           </Link>
         </div>
       </div>

@@ -2,14 +2,16 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useRef } from "react";
+import { useTranslations } from "next-intl";
 
 export function SMSearchBar({
-  placeholder = "بحث...",
+  placeholder,
   paramKey = "q",
 }: {
   placeholder?: string;
   paramKey?: string;
 }) {
+  const t = useTranslations("stationManager.searchBar");
   const router = useRouter();
   const sp = useSearchParams();
   const current = sp.get(paramKey) ?? "";
@@ -37,7 +39,7 @@ export function SMSearchBar({
         type="text"
         defaultValue={current}
         onChange={onChange}
-        placeholder={placeholder}
+        placeholder={placeholder ?? t("placeholder")}
         className="flex-1 bg-transparent border-none outline-none text-sm text-slate-200 placeholder-slate-600 text-right"
         dir="rtl"
       />

@@ -6,22 +6,34 @@ import { EmptyState }  from "@/components/ui/EmptyState";
 import { encrypt } from "@/lib/encryption";
 import { revalidatePath } from "next/cache";
 import { Unauthorized } from "@/components/ui/Unauthorized";
+import { getTranslations } from "next-intl/server";
+import { getLocale } from "next-intl/server";
+import { isRtl } from "@/i18n/config";
+import LanguageSwitcher from "@/components/ui/LanguageSwitcher";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "إعدادات DJ - EGONAIR" };
+
+export async function generateMetadata() {
+  const t = await getTranslations("stationManager.djSettings");
+  return { title: t("title") };
+}
 
 export default async function SMDjSettingsPage({
   searchParams,
 }: {
   searchParams: Promise<{ error?: string; success?: string; stationId?: string }>;
 }) {
+  const t = await getTranslations("stationManager.djSettings");
+  const locale = await getLocale();
+  const dir = isRtl(locale) ? "rtl" : "ltr";
+
   const session = await auth();
   if (!session?.user) redirect("/login");
   const role = (session.user as any)?.role as string;
   if (role !== "STATION_MANAGER") return <Unauthorized role={role} />;
 
   const managerId   = (session.user as any)?.id as string;
-  const managerName = session.user.name ?? session.user.email ?? "مدير المحطة";
+  const managerName = session.user.name ?? session.user.email ?? t("stationManager");
 
   const assignments = await prisma.stationManagerAssignment.findMany({
     where: { managerId, isActive: true },
@@ -41,32 +53,35 @@ export default async function SMDjSettingsPage({
   const { error: spError, success: spSuccess, stationId: spStationId } = await searchParams;
 
   return (
-    <div dir="rtl" className="min-h-screen bg-slate-950 text-slate-100"
+    <div dir={dir} className="min-h-screen bg-slate-950 text-slate-100"
       style={{ fontFamily: "'Cairo','Segoe UI',system-ui,sans-serif" }}>
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" />
 
       <header className="bg-slate-900 border-b border-slate-800 shadow-lg sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link href="/station-manager" className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-slate-100 transition-colors">←</Link>
+            <Link href="/station-manager" className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-slate-100 transition-colors" aria-label={t("backToDashboard")}>←</Link>
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 to-teal-600 flex items-center justify-center text-lg shadow">⚙️</div>
             <div>
-              <h1 className="text-base font-bold text-slate-100 leading-tight">إعدادات DJ للمحطة</h1>
+              <h1 className="text-base font-bold text-slate-100 leading-tight">{t("heading")}</h1>
               <p className="text-xs text-slate-500">{managerName}</p>
             </div>
           </div>
-          <Link href="/station-manager" className="text-xs text-slate-400 hover:text-teal-300 border border-slate-700 hover:border-teal-600/50 rounded-lg px-3 py-2 transition-colors">← اللوحة</Link>
+          <div className="flex items-center gap-4">
+            <LanguageSwitcher />
+            <Link href="/station-manager" className="text-xs text-slate-400 hover:text-teal-300 border border-slate-700 hover:border-teal-600/50 rounded-lg px-3 py-2 transition-colors">← {t("dashboard")}</Link>
+          </div>
         </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-8 space-y-6">
 
         {assignments.length === 0 && (
-          <EmptyState icon="📭" title="لا توجد محطات مسندة" description="لم يتم إسناد أي محطة لحسابك. تواصل مع الإدارة لتفعيل صلاحياتك." />
+          <EmptyState icon="📭" title={t("noAssignedTitle")} description={t("noAssignedDesc")} />
         )}
 
         <p className="text-xs text-slate-500">
-          بيانات DJ تُستخدم لربط المذيعين بالمحطة عند البث. كلمة المرور مشفرة ولا تُعرض.
+          {t("infoText")}
         </p>
 
         {assignments.map(({ station }) => {
@@ -88,7 +103,7 @@ export default async function SMDjSettingsPage({
                 <div>
                   <h2 className="font-bold text-slate-100 text-sm">{station.name}</h2>
                   <StatusBadge
-                    label={cred ? (cred.isActive ? "بيانات DJ مُعدة" : "بيانات DJ معطّلة") : "لا توجد بيانات DJ"}
+                    label={cred ? (cred.isActive ? t("statusConfigured") : t("statusDisabled")) : t("statusMissing")}
                     variant={cred?.isActive ? "success" : cred ? "warning" : "danger"}
                     dot
                   />
@@ -99,7 +114,7 @@ export default async function SMDjSettingsPage({
               {showSuccess && (
                 <div className="mb-4 flex items-center gap-2 bg-emerald-950/50 border border-emerald-500/30 text-emerald-400 rounded-xl px-4 py-3 text-sm">
                   <span>✅</span>
-                  <span>تم حفظ بيانات DJ للمحطة بنجاح.</span>
+                  <span>{t("saveSuccess")}</span>
                 </div>
               )}
               {showError && (
@@ -114,29 +129,29 @@ export default async function SMDjSettingsPage({
                 <input type="hidden" name="managerId"  value={managerId} />
                 <input type="hidden" name="credId"     value={cred?.id ?? ""} />
 
-                <DField label="الخادم (Host) *"  name="host"       defaultValue={cred?.host ?? ""}              dir="ltr" required />
-                <DField label="المنفذ (Port) *"  name="port"       defaultValue={cred?.port?.toString() ?? "8000"} dir="ltr" required type="number" />
-                <DField label="اسم مستخدم DJ *" name="djUsername" defaultValue={cred?.djUsername ?? ""}          dir="ltr" required />
+                <DField label={t("host")}  name="host"       defaultValue={cred?.host ?? ""}              dir="ltr" required />
+                <DField label={t("port")}  name="port"       defaultValue={cred?.port?.toString() ?? "8000"} dir="ltr" required type="number" />
+                <DField label={t("djUsername")} name="djUsername" defaultValue={cred?.djUsername ?? ""}          dir="ltr" required />
                 <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1">كلمة مرور DJ</label>
-                  <input name="djPassword" type="password" dir="ltr" placeholder="اتركه فارغاً للإبقاء على الحالية"
+                  <label className="block text-xs font-medium text-slate-400 mb-1">{t("djPassword")}</label>
+                  <input name="djPassword" type="password" dir="ltr" placeholder={t("leaveBlank")}
                     className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 transition-colors" />
                 </div>
                 <DField label="Mount"   name="mount"   defaultValue={cred?.mount ?? ""}   dir="ltr" />
                 <DField label="SID"     name="sid"     defaultValue={cred?.sid ?? ""}     dir="ltr" />
                 <DField label="Bitrate" name="bitrate" defaultValue={cred?.bitrate?.toString() ?? "128"} dir="ltr" type="number" />
                 <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1">الحالة</label>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">{t("status")}</label>
                   <select name="isActive" defaultValue={cred?.isActive !== false ? "true" : "false"}
                     className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-cyan-500 transition-colors">
-                    <option value="true">مفعّل</option>
-                    <option value="false">معطّل</option>
+                    <option value="true">{t("active")}</option>
+                    <option value="false">{t("inactive")}</option>
                   </select>
                 </div>
                 <div className="sm:col-span-2 flex justify-end">
                   <button type="submit"
                     className="bg-cyan-700 hover:bg-cyan-600 text-white font-semibold text-sm rounded-xl px-6 py-2.5 transition-colors">
-                    حفظ إعدادات DJ
+                    {t("saveBtn")}
                   </button>
                 </div>
               </form>
@@ -156,10 +171,13 @@ async function saveDjAction(formData: FormData) {
   const { encrypt: _encrypt } = await import("@/lib/encryption");
   const { redirect: redir } = await import("next/navigation");
   const { revalidatePath: _revalidate } = await import("next/cache");
+  const { getTranslations: _getTranslations } = await import("next-intl/server");
 
   const session = await _auth();
   if (!session?.user || (session.user as any)?.role !== "STATION_MANAGER") redir("/login");
   const managerId = ((session as any).user as any)?.id as string;
+
+  const t = await _getTranslations("stationManager.djSettings");
 
   const assignments = await _prisma.stationManagerAssignment.findMany({
     where: { managerId, isActive: true }, select: { stationId: true },
@@ -186,9 +204,9 @@ async function saveDjAction(formData: FormData) {
     redir(`/station-manager/dj-settings?error=${encodeURIComponent(msg)}${cardParam}${anchor}`);
   }
 
-  if (!assignedIds.includes(stationId)) errRedir("المحطة غير مسندة لحسابك");
-  if (!host || !djUsername)             errRedir("الخادم واسم المستخدم مطلوبان");
-  if (port < 1 || port > 65535)        errRedir("المنفذ يجب أن يكون بين 1 و 65535");
+  if (!assignedIds.includes(stationId)) errRedir(t("errNotAssigned"));
+  if (!host || !djUsername)             errRedir(t("errHostUsernameRequired"));
+  if (port < 1 || port > 65535)        errRedir(t("errPortRange"));
 
   try {
     if (credId) {
@@ -198,7 +216,7 @@ async function saveDjAction(formData: FormData) {
       await _prisma.stationDefaultCredential.update({ where: { id: credId }, data: updateData });
     } else {
       // Create new — password required
-      if (!djPassword) errRedir("كلمة المرور مطلوبة عند الإنشاء الأول");
+      if (!djPassword) errRedir(t("errPasswordRequired"));
       await _prisma.stationDefaultCredential.create({
         data: { stationId, host, port, djUsername, encryptedPassword: _encrypt(djPassword), mount, sid, bitrate, isActive },
       });
@@ -212,7 +230,7 @@ async function saveDjAction(formData: FormData) {
       },
     }).catch(() => {});
   } catch (err: any) {
-    errRedir("حدث خطأ: " + (err?.message ?? ""));
+    errRedir(t("errGeneral") + (err?.message ?? ""));
   }
 
   _revalidate("/station-manager/dj-settings");

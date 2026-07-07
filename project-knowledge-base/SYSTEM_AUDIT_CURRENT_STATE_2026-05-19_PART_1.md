@@ -92,7 +92,6 @@
 | Admin presenter password change UI | Logged as open — not implemented |
 | `[DIAG]` console log cleanup in studio-ui.tsx | Not done |
 | `TEST FILE TO MIXER` button removal | Not done |
-| SQLite → PostgreSQL migration | ✅ COMPLETED — PostgreSQL on VPS |
 | Station Manager — DJ settings page | `dj-settings/` directory exists — state UNKNOWN |
 | Station Manager — presenters page | `presenters/` directory exists — state UNKNOWN |
 | Station Manager — schedule page | `schedule/` directory exists — state UNKNOWN |
@@ -129,7 +128,6 @@
 | `SonicPanelCredential` table deletion | Holds legacy data — do not drop |
 | DIRECT_DJ presenters in programs/schedules | Forbidden — see AGENT_HANDOFF.md credential chain |
 | SINGLE_STATION/MULTI_STATION personal DJ credentials | Forbidden — see AGENT_HANDOFF.md |
-| Firebase/Firestore | Project is Prisma + PostgreSQL only (previously SQLite during development) — FIX-006 |
 | basePath inside NextAuth({}) config | Caused Cloud Build crash — FIX-016A was reverted |
 
 ---

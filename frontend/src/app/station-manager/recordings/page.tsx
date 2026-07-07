@@ -8,32 +8,40 @@ import { SMSearchBar } from "@/components/sm-search-bar";
 import { Unauthorized } from "@/components/ui/Unauthorized";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { EmptyState }  from "@/components/ui/EmptyState";
+import { getTranslations } from "next-intl/server";
+import { getLocale } from "next-intl/server";
+import { isRtl } from "@/i18n/config";
+import LanguageSwitcher from "@/components/ui/LanguageSwitcher";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "تسجيلات المحطة - EGONAIR" };
+
+export async function generateMetadata() {
+  const t = await getTranslations("stationManager.recordings");
+  return { title: t("title") };
+}
 
 const PAGE_SIZE = 20;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function fmt(d: Date): string {
-  return new Intl.DateTimeFormat("ar-EG", {
+function fmt(d: Date, locale: string): string {
+  return new Intl.DateTimeFormat(locale === "ar" ? "ar-EG" : locale, {
     timeZone: "Africa/Cairo",
     weekday: "short", year: "numeric", month: "short", day: "numeric",
     hour: "numeric", minute: "2-digit",
   }).format(d);
 }
 
-function fmtDur(s: number): string {
+function fmtDur(s: number, t: any): string {
   const m = Math.floor(s / 60);
   const sec = s % 60;
-  return m === 0 ? `${sec} ث` : sec === 0 ? `${m} د` : `${m} د ${sec} ث`;
+  return m === 0 ? `${sec} ${t("sec")}` : sec === 0 ? `${m} ${t("min")}` : `${m} ${t("min")} ${sec} ${t("sec")}`;
 }
 
-function fmtBytes(b: number): string {
-  if (b < 1024) return `${b} بايت`;
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} كيلوبايت`;
-  return `${(b / (1024 * 1024)).toFixed(1)} ميغابايت`;
+function fmtBytes(b: number, t: any): string {
+  if (b < 1024) return `${b} ${t("bytes")}`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} ${t("kb")}`;
+  return `${(b / (1024 * 1024)).toFixed(1)} ${t("mb")}`;
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
@@ -43,6 +51,10 @@ export default async function SMRecordingsPage({
 }: {
   searchParams: Promise<{ station?: string; presenter?: string; q?: string; page?: string }>;
 }) {
+  const t = await getTranslations("stationManager.recordings");
+  const locale = await getLocale();
+  const dir = isRtl(locale) ? "rtl" : "ltr";
+
   // ── 1. Auth ────────────────────────────────────────────────────────────────
   const session = await auth();
   if (!session?.user) redirect("/login");
@@ -51,7 +63,7 @@ export default async function SMRecordingsPage({
   if (role !== "STATION_MANAGER") return <Unauthorized role={role} />;
 
   const managerId   = (session.user as { id?: string }).id ?? "";
-  const managerName = session.user.name ?? "مدير المحطة";
+  const managerName = session.user.name ?? t("stationManager");
 
   // ── 2. Assigned stations ───────────────────────────────────────────────────
   const assignments = await prisma.stationManagerAssignment.findMany({
@@ -64,7 +76,7 @@ export default async function SMRecordingsPage({
   const stationMap = new Map(assignments.map((a) => [a.station.id, a.station.name]));
 
   if (stationIds.length === 0) {
-    return <NoStationsPage managerName={managerName} />;
+    return <NoStationsPage managerName={managerName} t={t} dir={dir} />;
   }
 
   // ── 3. Parse filter params ─────────────────────────────────────────────────
@@ -177,7 +189,7 @@ export default async function SMRecordingsPage({
 
   // ── 8. Render ──────────────────────────────────────────────────────────────
   return (
-    <div dir="rtl" className="min-h-screen bg-slate-950 text-slate-100"
+    <div dir={dir} className="min-h-screen bg-slate-950 text-slate-100"
       style={{ fontFamily: "'Cairo','Segoe UI',system-ui,sans-serif" }}>
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" />
 
@@ -187,17 +199,20 @@ export default async function SMRecordingsPage({
           <div className="flex items-center gap-3">
             <Link href="/station-manager"
               className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-slate-100 transition-colors"
-              aria-label="العودة للوحة">←</Link>
+              aria-label={t("backToDashboard")}>←</Link>
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-lg shadow flex-shrink-0">🗂️</div>
             <div>
-              <h1 className="text-base font-bold text-slate-100 leading-tight">تسجيلات المحطة</h1>
+              <h1 className="text-base font-bold text-slate-100 leading-tight">{t("heading")}</h1>
               <p className="text-xs text-slate-500">{managerName}</p>
             </div>
           </div>
-          <Link href="/station-manager"
-            className="text-xs text-slate-400 hover:text-teal-300 border border-slate-700 hover:border-teal-600/50 rounded-lg px-3 py-2 transition-colors">
-            ← اللوحة
-          </Link>
+          <div className="flex items-center gap-4">
+            <LanguageSwitcher />
+            <Link href="/station-manager"
+              className="text-xs text-slate-400 hover:text-teal-300 border border-slate-700 hover:border-teal-600/50 rounded-lg px-3 py-2 transition-colors">
+              ← {t("dashboard")}
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -206,7 +221,7 @@ export default async function SMRecordingsPage({
         {/* ── DB error ── */}
         {dbError && (
           <div className="bg-red-950/40 border border-red-500/30 rounded-2xl p-8 text-center text-red-400 text-sm">
-            حدث خطأ أثناء تحميل التسجيلات. حاول تحديث الصفحة.
+            {t("dbError")}
           </div>
         )}
 
@@ -218,19 +233,19 @@ export default async function SMRecordingsPage({
                 stations={stationsForFilter}
                 paramKey="station"
                 accent="amber"
-                allLabel="كل المحطات"
+                allLabel={t("allStations")}
               />
             )}
             <SMPresenterFilter presenters={presenterOptions} paramKey="presenter" />
-            <SMSearchBar placeholder="بحث في التسجيلات..." paramKey="q" />
+            <SMSearchBar placeholder={t("searchPlaceholder")} paramKey="q" />
           </div>
         )}
 
         {/* ── Empty state ── */}
         {!dbError && recordings.length === 0 && (
           <EmptyState icon="🎙️"
-            title={(filterStation || filterPresenter || q) ? "لا توجد تسجيلات مطابقة" : "لا توجد تسجيلات بعد"}
-            description={(filterStation || filterPresenter || q) ? "جرب تعديل فلاتر البحث." : "ستظهر هنا تسجيلات جلسات البث فور اكتمالها."}
+            title={(filterStation || filterPresenter || q) ? t("noMatchTitle") : t("noRecordingsTitle")}
+            description={(filterStation || filterPresenter || q) ? t("noMatchDesc") : t("noRecordingsDesc")}
           />
         )}
 
@@ -239,10 +254,10 @@ export default async function SMRecordingsPage({
           <div>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-widest">
-                التسجيلات ({totalCount})
+                {t("recordingsList")} ({totalCount})
               </h2>
               {totalPages > 1 && (
-                <span className="text-xs text-slate-500">صفحة {page} من {totalPages}</span>
+                <span className="text-xs text-slate-500">{t("page")} {page} {t("of")} {totalPages}</span>
               )}
             </div>
             <div className="space-y-3">
@@ -254,9 +269,9 @@ export default async function SMRecordingsPage({
                 const presenter = rec.presenter?.name ?? rec.presenter?.username
                   ?? (rec as any).presenterNameSnapshot ?? "—";
                 const program   = rec.program?.title ?? null;
-                const dateStr   = fmt(rec.startedAt);
-                const dur       = rec.durationSeconds != null ? fmtDur(rec.durationSeconds) : null;
-                const size      = rec.bytesReceived  != null ? fmtBytes(rec.bytesReceived)  : null;
+                const dateStr   = fmt(rec.startedAt, locale);
+                const dur       = rec.durationSeconds != null ? fmtDur(rec.durationSeconds, t) : null;
+                const size      = rec.bytesReceived  != null ? fmtBytes(rec.bytesReceived, t)  : null;
 
                 return (
                   <article key={rec.id}
@@ -295,17 +310,17 @@ export default async function SMRecordingsPage({
                       <audio controls preload="none" src={playUrl}
                         className="w-full h-9 rounded-lg mt-1 mb-3" style={{ colorScheme: "dark" }}>
                         <source src={playUrl} type={mime} />
-                        متصفحك لا يدعم تشغيل الصوت.
+                        {t("audioNotSupported")}
                       </audio>
 
                       <div className="flex items-center gap-2 flex-wrap">
                         <a href={playUrl} target="_blank" rel="noopener noreferrer"
                           className="inline-flex items-center gap-1.5 text-xs text-teal-400 hover:text-teal-300 border border-teal-700/30 hover:border-teal-500/50 rounded-lg px-3 py-1.5 transition-colors">
-                          ▶ فتح
+                          {t("openBtn")}
                         </a>
                         <a href={dlUrl} download={rec.localPath}
                           className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 border border-slate-700 hover:border-slate-500 bg-slate-800/60 hover:bg-slate-800 rounded-lg px-3 py-1.5 transition-colors">
-                          ⬇ تنزيل
+                          {t("downloadBtn")}
                         </a>
                       </div>
                     </div>
@@ -321,7 +336,7 @@ export default async function SMRecordingsPage({
                   <Link
                     href={`?${new URLSearchParams({ ...(filterStation ? { station: filterStation } : {}), ...(filterPresenter ? { presenter: filterPresenter } : {}), ...(q ? { q } : {}), page: String(page - 1) }).toString()}`}
                     className="text-xs border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-slate-200 rounded-lg px-3 py-1.5 transition-colors">
-                    ← السابق
+                    {t("previous")}
                   </Link>
                 )}
                 <span className="text-xs text-slate-500 px-2">{page} / {totalPages}</span>
@@ -329,7 +344,7 @@ export default async function SMRecordingsPage({
                   <Link
                     href={`?${new URLSearchParams({ ...(filterStation ? { station: filterStation } : {}), ...(filterPresenter ? { presenter: filterPresenter } : {}), ...(q ? { q } : {}), page: String(page + 1) }).toString()}`}
                     className="text-xs border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-slate-200 rounded-lg px-3 py-1.5 transition-colors">
-                    التالي →
+                    {t("next")}
                   </Link>
                 )}
               </div>
@@ -343,24 +358,27 @@ export default async function SMRecordingsPage({
 
 // ── No-stations fallback ───────────────────────────────────────────────────────
 
-function NoStationsPage({ managerName }: { managerName: string }) {
+function NoStationsPage({ managerName, t, dir }: { managerName: string, t: any, dir: string }) {
   return (
-    <div dir="rtl" className="min-h-screen bg-slate-950 text-slate-100 flex flex-col"
+    <div dir={dir} className="min-h-screen bg-slate-950 text-slate-100 flex flex-col"
       style={{ fontFamily: "'Cairo','Segoe UI',system-ui,sans-serif" }}>
       <header className="bg-slate-900 border-b border-slate-800 shadow-lg">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center gap-3">
-          <Link href="/station-manager" className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-slate-100 transition-colors">←</Link>
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-lg shadow">🗂️</div>
-          <div>
-            <h1 className="text-base font-bold text-slate-100">تسجيلات المحطة</h1>
-            <p className="text-xs text-slate-500">{managerName}</p>
+        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Link href="/station-manager" className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-slate-100 transition-colors">←</Link>
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-lg shadow">🗂️</div>
+            <div>
+              <h1 className="text-base font-bold text-slate-100">{t("heading")}</h1>
+              <p className="text-xs text-slate-500">{managerName}</p>
+            </div>
           </div>
+          <LanguageSwitcher />
         </div>
       </header>
       <main className="flex-1 flex items-center justify-center p-8">
-        <EmptyState icon="📭" title="لا توجد محطات مسندة"
-          description="تواصل مع الإدارة لتفعيل المحطات المرتبطة بحسابك."
-          action={<Link href="/station-manager" className="text-sm text-slate-400 hover:text-teal-300 border border-slate-700 hover:border-teal-600/30 rounded-lg px-4 py-2 transition-colors">← العودة للوحة</Link>}
+        <EmptyState icon="📭" title={t("noAssignedTitle")}
+          description={t("noAssignedDesc2")}
+          action={<Link href="/station-manager" className="text-sm text-slate-400 hover:text-teal-300 border border-slate-700 hover:border-teal-600/30 rounded-lg px-4 py-2 transition-colors">← {t("backToDashboard")}</Link>}
         />
       </main>
     </div>

@@ -29,7 +29,7 @@ export async function submitListenerMessage(formData: FormData) {
     // Broadcast to backend-audio
     // We try/catch this so the user still sees success even if broadcast fails
     try {
-      await fetch("http://127.0.0.1:4000/internal/broadcast-message", {
+      await fetch("http://127.0.0.1:4001/internal/broadcast-message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -57,7 +57,10 @@ export async function submitListenerMessage(formData: FormData) {
   }
 }
 
+import { unstable_noStore as noStore } from "next/cache";
+
 export async function checkMessagingStatus(stationId: string) {
+  noStore();
   try {
     const station = await prisma.station.findUnique({
       where: { id: stationId },

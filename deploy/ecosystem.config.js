@@ -17,7 +17,6 @@ module.exports = {
       args: 'start --port 3000 --hostname 127.0.0.1',
       cwd: '/home/<YOUR_CPANEL_USER>/apps/egonair-stream/frontend',
 
-      // Single instance — SQLite is single-writer; do NOT use cluster mode
       instances: 1,
       exec_mode: 'fork',
 

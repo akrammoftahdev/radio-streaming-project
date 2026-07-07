@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
 import { MultiSmartSelect } from "@/components/ui/MultiSmartSelect";
 import type { MultiSmartSelectOption } from "@/components/ui/MultiSmartSelect";
+import { useTranslations } from "next-intl";
 
 type Station = { id: string; name: string; slug: string };
 
@@ -17,6 +18,7 @@ export function AdminRecordingsStationFilter({
   pageSize:           number;
 }) {
   const router          = useRouter();
+  const t               = useTranslations("admin.recordings");
   const searchParamsUrl = useSearchParams();
   const [selectedIds, setSelectedIds] = useState<string[]>(initialSelectedIds);
 
@@ -45,7 +47,7 @@ export function AdminRecordingsStationFilter({
         setSelectedIds(ids);
         applyFilter(ids);
       }}
-      placeholder="المحطات"
+      placeholder={t("filterStationLabel")}
     />
   );
 }

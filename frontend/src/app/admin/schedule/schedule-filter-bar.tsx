@@ -5,28 +5,32 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { MultiSmartSelect }   from "@/components/ui/MultiSmartSelect";
 import { SegmentedFilter }    from "@/components/ui/SegmentedFilter";
 import { ClearFiltersButton } from "@/components/ui/ClearFiltersButton";
+import { useTranslations } from "next-intl";
 
 type Item = { id: string; name: string };
 
-const RECURRENCE_OPTIONS = [
-  { value: "all",           label: "الكل"        },
-  { value: "DAILY",         label: "يومي"        },
-  { value: "WEEKLY",        label: "أسبوعي"      },
-  { value: "SELECTED_DAYS", label: "أيام مختارة" },
-  { value: "ONE_TIME",      label: "مرة واحدة"   },
-];
+
 
 export function ScheduleFilterBar({
   allStations, allPresenters, initialStationIds, initialPresenterIds, initialRecurrence,
-  initialTimeFrom, initialTimeTo, weekStartIso, isCurrentWeek,
+  initialTimeFrom, initialTimeTo, weekStartIso, isCurrentWeek, locale,
 }: {
   allStations: Item[]; allPresenters: Item[];
   initialStationIds: string[]; initialPresenterIds: string[]; initialRecurrence: string;
   initialTimeFrom: string; initialTimeTo: string;
-  weekStartIso: string; isCurrentWeek: boolean;
+  weekStartIso: string; isCurrentWeek: boolean; locale: string;
 }) {
   const router = useRouter();
   const sp     = useSearchParams();
+  const t      = useTranslations("admin.schedule");
+
+  const RECURRENCE_OPTIONS = [
+    { value: "all",           label: t("all")        },
+    { value: "DAILY",         label: t("daily")        },
+    { value: "WEEKLY",        label: t("weekly")      },
+    { value: "SELECTED_DAYS", label: t("selectedDays") },
+    { value: "ONE_TIME",      label: t("oneTime")   },
+  ];
 
   // ── Local state for time range (debounced push) ────────────────────────────
   const timeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -73,15 +77,15 @@ export function ScheduleFilterBar({
   const toLocalISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const prevWkStr  = toLocalISO(prevWkDate);
   const nextWkStr  = toLocalISO(nextWkDate);
-  const fmtDate    = (d: Date) => d.toLocaleDateString("ar-EG", { weekday: "short", month: "short", day: "numeric" });
+  const fmtDate    = (d: Date) => d.toLocaleDateString(locale === "ar" ? "ar-EG" : "en-US", { weekday: "short", month: "short", day: "numeric" });
 
   // ── Time range ────────────────────────────────────────────────────────────
   const TIME_PRESETS = [
-    { label: "الكل",      from: "",      to: ""      },
-    { label: "الليل",     from: "00:00", to: "06:00" },
-    { label: "الصباح",    from: "06:00", to: "12:00" },
-    { label: "الظهيرة",   from: "12:00", to: "18:00" },
-    { label: "المساء",    from: "18:00", to: "24:00" },
+    { label: t("all"),      from: "",      to: ""      },
+    { label: t("night"),     from: "00:00", to: "06:00" },
+    { label: t("morning"),    from: "06:00", to: "12:00" },
+    { label: t("noon"),   from: "12:00", to: "18:00" },
+    { label: t("evening"),    from: "18:00", to: "24:00" },
   ];
 
   const activePreset = TIME_PRESETS.find(p => p.from === initialTimeFrom && p.to === initialTimeTo);
@@ -100,8 +104,8 @@ export function ScheduleFilterBar({
         {/* Prev week */}
         <button type="button" onClick={() => push(buildUrl({ weekOf: prevWkStr }))}
           className="flex items-center gap-2 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-600 border border-neutral-700 hover:border-neutral-500 text-neutral-300 hover:text-neutral-100 text-sm font-medium rounded-xl transition-all select-none">
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-          <span>السابق</span>
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 rtl:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          <span>{t("previous")}</span>
         </button>
 
         {/* Center: date range + picker + today */}
@@ -131,7 +135,7 @@ export function ScheduleFilterBar({
           {!isCurrentWeek && (
             <button type="button" onClick={() => push(buildUrl({ weekOf: "" }))}
               className="px-3 py-2 bg-violet-600/20 hover:bg-violet-600/30 border border-violet-600/40 hover:border-violet-500/60 text-violet-300 text-xs font-medium rounded-xl transition-all whitespace-nowrap select-none">
-              اليوم
+              {t("today")}
             </button>
           )}
         </div>
@@ -139,8 +143,8 @@ export function ScheduleFilterBar({
         {/* Next week */}
         <button type="button" onClick={() => push(buildUrl({ weekOf: nextWkStr }))}
           className="flex items-center gap-2 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 active:bg-neutral-600 border border-neutral-700 hover:border-neutral-500 text-neutral-300 hover:text-neutral-100 text-sm font-medium rounded-xl transition-all select-none">
-          <span>التالي</span>
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          <span>{t("next")}</span>
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 rtl:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
         </button>
 
       </div>
@@ -153,7 +157,7 @@ export function ScheduleFilterBar({
           options={allStations.map(s => ({ value: s.id, label: s.name }))}
           values={initialStationIds}
           onChange={applyStations}
-          placeholder="المحطات"
+          placeholder={t("stations")}
         />
 
         {/* Presenter multi-select — entity selector */}
@@ -161,7 +165,7 @@ export function ScheduleFilterBar({
           options={allPresenters.map(p => ({ value: p.id, label: p.name }))}
           values={initialPresenterIds}
           onChange={applyPresenters}
-          placeholder="المذيعون"
+          placeholder={t("presenters")}
         />
 
         {/* Recurrence — fixed values, mutually exclusive → SegmentedFilter */}
@@ -207,7 +211,7 @@ export function ScheduleFilterBar({
 
         {/* Clear all */}
         {hasFilters && (
-          <ClearFiltersButton onClick={clearAll} label="مسح الكل" />
+          <ClearFiltersButton onClick={clearAll} label={t("clearFilters")} />
         )}
 
       </div>

@@ -82,8 +82,6 @@
 
 > ⚠️ **DO NOT use git push/pull for deployment.** This project deploys via `scp` + `npm run build` + `pm2 restart`.  
 > ⚠️ **DO NOT skip `npm run build`.** Next.js production mode reads from `.next/`, not `src/`.  
-> ⚠️ **DO NOT use SQLite on VPS.** Production uses PostgreSQL (localhost:5432, database `egonair`).  
-> ⚠️ **DO NOT reference egyona, gcloud, Cloud Run, or GitHub Actions.** All historical.  
 > ⚠️ **DO NOT release `manualStopRef` synchronously.** Native bridge events fire on the NEXT event loop tick.  
 > ⚠️ **DO NOT use FlatList inside ScrollView.** Use `.map()` for small lists.  
 > ⚠️ **RTL toggle switches:** Use `dir="ltr"` + `left` positioning. Never `translate-x`.  

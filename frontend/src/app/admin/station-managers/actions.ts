@@ -198,7 +198,6 @@ export async function toggleStationManagerActive(formData: FormData) {
 // recordings, schedules, credentials, or any station-owned data.
 // Station Manager is a permission holder only — not an owner of station data.
 //
-// FK analysis (SQLite RESTRICT default):
 //   StationManagerAssignment → User (onDelete: Cascade) — auto-deletes.
 //   AccessLog → User (no onDelete → RESTRICT) — we delete explicitly first.
 //   All other User FK relations (PresenterProfile, BroadcastSchedule, Program,

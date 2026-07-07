@@ -65,7 +65,7 @@ export async function POST(req: Request) {
 
     // ── SCHEDULED presenters: validate schedule window before issuing token ──
     const now = new Date();
-    const session = await resolveCurrentOrNextProgramSession(presenterId, now);
+    const session = await resolveCurrentOrNextProgramSession(presenterId, now, stationId);
 
     // Must have a current session on the requested station
     if (!session || session.stationId !== stationId) {

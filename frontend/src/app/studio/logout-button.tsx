@@ -1,8 +1,11 @@
 "use client";
 
 import { logoutAction } from "./logout-action";
+import { useTranslations } from "next-intl";
 
 export default function LogoutButton() {
+  const t = useTranslations("auth");
+
   return (
     <form action={logoutAction}>
       <button
@@ -14,7 +17,7 @@ export default function LogoutButton() {
           <polyline points="16 17 21 12 16 7"/>
           <line x1="21" y1="12" x2="9" y2="12"/>
         </svg>
-        تسجيل الخروج
+        {t("logout")}
       </button>
     </form>
   );

@@ -83,7 +83,6 @@ Presets re-seeded on VPS PostgreSQL via `npx tsx prisma/seed-dsp-presets.ts`.
 ## 4. KB Legacy Reference Cleanup
 
 ### What was cleaned
-Removed/updated all references to **egyona**, **Cloud Run**, **gcloud**, **GitHub**, **SQLite** across the entire project:
 
 | Scope | Files Cleaned |
 |---|---|
@@ -114,6 +113,4 @@ Removed/updated all references to **egyona**, **Cloud Run**, **gcloud**, **GitHu
 | `frontend/src/lib/dsp-presets.ts` | Per-filter enable flags, `DspNumericKey` type, `DSP_GROUP_ENABLE_KEY`, updated 10 system presets |
 | `frontend/src/components/studio/DspPanel.tsx` | Toggle switches per group, RTL fix |
 | `frontend/src/app/studio/studio-ui.tsx` | `applyDspParams()` respects enable flags |
-| `frontend/prisma/schema.prisma` | Comments cleaned (SQLite/Cloud Run) |
-| `frontend/prisma/schema.cloud.prisma` | Comments cleaned (SQLite/Docker) |
 | KB: 6 markdown files | Legacy references marked `[HISTORICAL]` |

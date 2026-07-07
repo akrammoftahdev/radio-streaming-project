@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import {
   createMyDirectDjRadio,
   updateMyDirectDjRadio,
@@ -35,67 +36,60 @@ const LABEL = "text-xs font-medium text-neutral-400 mb-1 block";
 
 // ── Error message map ─────────────────────────────────────────────────────────
 
-const DJ_ERRORS: Record<string, string> = {
-  radio_name_required:  "اسم الإذاعة مطلوب.",
-  host_required:        "عنوان الخادم (Host) مطلوب.",
-  port_invalid:         "رقم المنفذ يجب أن يكون بين 1 و 65535.",
-  dj_username_required: "اسم مستخدم DJ مطلوب.",
-  password_required:    "كلمة المرور مطلوبة عند الإنشاء.",
-  radio_id_required:    "معرّف الإذاعة مفقود.",
-  not_found:            "الإذاعة غير موجودة أو ليست ملكك.",
-};
+// Error and success message keys are now handled via translations
 
 // ── Shared form fields component ──────────────────────────────────────────────
 
 function RadioFormFields({ radio }: { radio?: DjRadio }) {
+  const t = useTranslations("profile.directDjRadios");
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className={LABEL}>اسم الإذاعة *</label>
-          <input name="radioName" defaultValue={radio?.radioName ?? ""} placeholder="إذاعة مثال" required className={INPUT} dir="rtl" />
+          <label className={LABEL}>{t("radioNameLabel")}</label>
+          <input name="radioName" defaultValue={radio?.radioName ?? ""} placeholder={t("radioNamePlaceholder")} required className={INPUT} dir="rtl" />
         </div>
         <div>
-          <label className={LABEL}>Bitrate (kbps)</label>
+          <label className={LABEL}>{t("bitrateLabel")}</label>
           <input name="bitrate" type="number" defaultValue={radio?.bitrate ?? 128} placeholder="128" className={INPUT} dir="ltr" />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className={LABEL}>Host *</label>
+          <label className={LABEL}>{t("hostLabel")}</label>
           <input name="host" defaultValue={radio?.host ?? ""} placeholder="stream.example.com" required className={INPUT} dir="ltr" />
         </div>
         <div>
-          <label className={LABEL}>Port *</label>
+          <label className={LABEL}>{t("portLabel")}</label>
           <input name="port" type="number" defaultValue={radio?.port ?? ""} placeholder="8000" required className={INPUT} dir="ltr" />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className={LABEL}>DJ Username *</label>
+          <label className={LABEL}>{t("djUsernameLabel")}</label>
           <input name="djUsername" defaultValue={radio?.djUsername ?? ""} placeholder="source" required className={INPUT} dir="ltr" />
         </div>
         <div>
           <label className={LABEL}>
-            {radio ? "كلمة المرور (اتركها فارغة للإبقاء)" : "كلمة المرور *"}
+            {radio ? t("passwordEdit") : t("passwordCreate")}
           </label>
           <input name="password" type="password" placeholder="••••••••" className={INPUT} dir="ltr" />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className={LABEL}>Mount (اختياري)</label>
+          <label className={LABEL}>{t("mountLabel")}</label>
           <input name="mount" defaultValue={radio?.mount ?? ""} placeholder="/live" className={INPUT} dir="ltr" />
         </div>
         <div>
-          <label className={LABEL}>SID (اختياري)</label>
+          <label className={LABEL}>{t("sidLabel")}</label>
           <input name="sid" defaultValue={radio?.sid ?? ""} placeholder="1" className={INPUT} dir="ltr" />
         </div>
       </div>
       <label className="flex items-center gap-2 cursor-pointer select-none">
         <input name="isActive" type="checkbox" defaultChecked={radio ? radio.isActive : true}
           className="w-4 h-4 accent-amber-500 rounded" />
-        <span className="text-sm text-neutral-300">تفعيل الإذاعة</span>
+        <span className="text-sm text-neutral-300">{t("enableRadio")}</span>
       </label>
     </div>
   );
@@ -104,18 +98,29 @@ function RadioFormFields({ radio }: { radio?: DjRadio }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function DirectDjRadiosSection({ radios, djError, djSaved }: Props) {
+  const t = useTranslations("profile.directDjRadios");
   const [addOpen,  setAddOpen]  = useState(false);
   const [editId,   setEditId]   = useState<string | null>(null);
   const [delId,    setDelId]    = useState<string | null>(null);
 
-  const errorMsg = djError ? (DJ_ERRORS[djError] ?? `خطأ: ${djError}`) : null;
+  const DJ_ERRORS: Record<string, string> = {
+    radio_name_required:  t("errRadioNameRequired"),
+    host_required:        t("errHostRequired"),
+    port_invalid:         t("errPortInvalid"),
+    dj_username_required: t("errDjUsernameRequired"),
+    password_required:    t("errPasswordRequired"),
+    radio_id_required:    t("errRadioIdRequired"),
+    not_found:            t("errNotFound"),
+  };
+
+  const errorMsg = djError ? (DJ_ERRORS[djError] ?? t("errorPrefix", { error: djError })) : null;
 
   const savedMsgs: Record<string, string> = {
-    created:     "تم إضافة الإذاعة بنجاح ✅",
-    updated:     "تم حفظ التعديلات بنجاح ✅",
-    toggled:     "تم تحديث حالة الإذاعة ✅",
-    deleted:     "تم حذف الإذاعة ✅",
-    deactivated: "تم تعطيل الإذاعة بدلاً من الحذف (مرتبطة بتسجيلات) ✅",
+    created:     t("savedCreated"),
+    updated:     t("savedUpdated"),
+    toggled:     t("savedToggled"),
+    deleted:     t("savedDeleted"),
+    deactivated: t("savedDeactivated"),
   };
   const savedMsg = djSaved ? (savedMsgs[djSaved] ?? null) : null;
 
@@ -125,16 +130,16 @@ export default function DirectDjRadiosSection({ radios, djError, djSaved }: Prop
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-2">
           <span className="text-lg">🎙️</span>
-          <h2 className="text-lg font-semibold text-neutral-200">إذاعات DJ المباشر</h2>
+          <h2 className="text-lg font-semibold text-neutral-200">{t("title")}</h2>
         </div>
         <button
           onClick={() => { setAddOpen(o => !o); setEditId(null); }}
           className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:border-amber-400/50 rounded-lg transition-colors"
         >
-          <span>{addOpen ? "✕ إغلاق" : "+ إضافة إذاعة"}</span>
+          <span>{addOpen ? t("addOpen") : t("addClosed")}</span>
         </button>
       </div>
-      <p className="text-xs text-neutral-500 mb-5">أضف الإذاعات التي تريد الاتصال بها مباشرة من الاستوديو.</p>
+      <p className="text-xs text-neutral-500 mb-5">{t("description")}</p>
 
       {/* Banners */}
       {savedMsg && (
@@ -151,17 +156,17 @@ export default function DirectDjRadiosSection({ radios, djError, djSaved }: Prop
       {/* ── Add new radio form ── */}
       {addOpen && (
         <div className="mb-5 bg-neutral-950/60 border border-amber-500/20 rounded-xl p-5">
-          <p className="text-sm font-semibold text-amber-300 mb-4">إذاعة جديدة</p>
+          <p className="text-sm font-semibold text-amber-300 mb-4">{t("newRadio")}</p>
           <form action={createMyDirectDjRadio} className="space-y-4">
             <RadioFormFields />
             <div className="flex gap-2 justify-end pt-1">
               <button type="button" onClick={() => setAddOpen(false)}
                 className="text-xs text-neutral-500 hover:text-neutral-300 px-3 py-2 transition-colors">
-                إلغاء
+                {t("cancel")}
               </button>
               <button type="submit"
                 className="bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium rounded-xl px-5 py-2 transition-all">
-                حفظ الإذاعة
+                {t("saveRadio")}
               </button>
             </div>
           </form>
@@ -171,7 +176,7 @@ export default function DirectDjRadiosSection({ radios, djError, djSaved }: Prop
       {/* ── Radio cards ── */}
       {radios.length === 0 && !addOpen && (
         <div className="text-center py-10 text-neutral-600 text-sm">
-          لا توجد إذاعات بعد. اضغط &quot;+ إضافة إذاعة&quot; للبدء.
+          {t("noRadios")}
         </div>
       )}
 
@@ -200,7 +205,7 @@ export default function DirectDjRadiosSection({ radios, djError, djSaved }: Prop
 
               {/* Active badge */}
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${radio.isActive ? "bg-emerald-500/10 text-emerald-400" : "bg-neutral-800 text-neutral-500"}`}>
-                {radio.isActive ? "مفعّل" : "معطّل"}
+                {radio.isActive ? t("statusActive") : t("statusInactive")}
               </span>
 
               {/* Actions */}
@@ -210,7 +215,7 @@ export default function DirectDjRadiosSection({ radios, djError, djSaved }: Prop
                   onClick={() => setEditId(id => id === radio.id ? null : radio.id)}
                   className="text-xs text-neutral-400 hover:text-amber-300 px-2 py-1.5 rounded-lg hover:bg-amber-500/10 transition-colors"
                 >
-                  تعديل
+                  {t("edit")}
                 </button>
 
                 {/* Toggle active */}
@@ -218,7 +223,7 @@ export default function DirectDjRadiosSection({ radios, djError, djSaved }: Prop
                   <input type="hidden" name="radioId" value={radio.id} />
                   <button type="submit"
                     className="text-xs text-neutral-400 hover:text-indigo-300 px-2 py-1.5 rounded-lg hover:bg-indigo-500/10 transition-colors">
-                    {radio.isActive ? "تعطيل" : "تفعيل"}
+                    {radio.isActive ? t("disable") : t("enable")}
                   </button>
                 </form>
 
@@ -229,12 +234,12 @@ export default function DirectDjRadiosSection({ radios, djError, djSaved }: Prop
                       <input type="hidden" name="radioId" value={radio.id} />
                       <button type="submit"
                         className="text-xs text-red-400 hover:text-red-300 px-2 py-1.5 rounded-lg hover:bg-red-500/10 transition-colors font-medium">
-                        تأكيد
+                        {t("confirmDelete")}
                       </button>
                     </form>
                     <button onClick={() => setDelId(null)}
                       className="text-xs text-neutral-500 hover:text-neutral-300 px-2 py-1.5 transition-colors">
-                      لا
+                      {t("cancelDelete")}
                     </button>
                   </div>
                 ) : (
@@ -242,7 +247,7 @@ export default function DirectDjRadiosSection({ radios, djError, djSaved }: Prop
                     onClick={() => setDelId(radio.id)}
                     className="text-xs text-neutral-500 hover:text-red-400 px-2 py-1.5 rounded-lg hover:bg-red-500/10 transition-colors"
                   >
-                    حذف
+                    {t("deleteRadio")}
                   </button>
                 )}
               </div>
@@ -257,11 +262,11 @@ export default function DirectDjRadiosSection({ radios, djError, djSaved }: Prop
                   <div className="flex gap-2 justify-end pt-1">
                     <button type="button" onClick={() => setEditId(null)}
                       className="text-xs text-neutral-500 hover:text-neutral-300 px-3 py-2 transition-colors">
-                      إغلاق
+                      {t("close")}
                     </button>
                     <button type="submit"
                       className="bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium rounded-xl px-5 py-2 transition-all">
-                      حفظ التعديلات
+                      {t("saveChanges")}
                     </button>
                   </div>
                 </form>

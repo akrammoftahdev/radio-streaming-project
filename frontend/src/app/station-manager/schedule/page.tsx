@@ -4,20 +4,14 @@ import Link from "next/link";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { EmptyState }  from "@/components/ui/EmptyState";
 import { Unauthorized } from "@/components/ui/Unauthorized";
+import { getTranslations, getLocale } from "next-intl/server";
+import { isRtl } from "@/i18n/config";
+import LanguageSwitcher from "@/components/ui/LanguageSwitcher";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "جدول المحطة - EGONAIR" };
 
-// Saturday-first Arabic week order
+// Saturday-first week order
 const DAY_ORDER = [6, 0, 1, 2, 3, 4, 5];
-const DAY_NAMES: Record<number, string> = {
-  0: "الأحد", 1: "الإثنين", 2: "الثلاثاء",
-  3: "الأربعاء", 4: "الخميس", 5: "الجمعة", 6: "السبت",
-};
-const RECURRENCE_LABELS: Record<string, string> = {
-  DAILY: "يومي", WEEKLY: "أسبوعي",
-  SELECTED_DAYS: "أيام مختارة", ONE_TIME: "مرة واحدة",
-};
 
 type Entry = {
   programId: string;
@@ -31,6 +25,11 @@ type Entry = {
   oneTimeDate?: string;
 };
 
+export async function generateMetadata() {
+  const t = await getTranslations("stationManager.schedule");
+  return { title: t("title") };
+}
+
 export default async function SMSchedulePage({
   searchParams,
 }: {
@@ -42,8 +41,21 @@ export default async function SMSchedulePage({
   const role = (session.user as { role?: string }).role ?? "";
   if (role !== "STATION_MANAGER") return <Unauthorized role={role} />;
 
+  const t = await getTranslations("stationManager.schedule");
+  const locale = await getLocale();
+  const dir = isRtl(locale) ? "rtl" : "ltr";
+
+  const DAY_NAMES: Record<number, string> = {
+    0: t("day_0"), 1: t("day_1"), 2: t("day_2"),
+    3: t("day_3"), 4: t("day_4"), 5: t("day_5"), 6: t("day_6"),
+  };
+  const RECURRENCE_LABELS: Record<string, string> = {
+    DAILY: t("recurrence_DAILY"), WEEKLY: t("recurrence_WEEKLY"),
+    SELECTED_DAYS: t("recurrence_SELECTED_DAYS"), ONE_TIME: t("recurrence_ONE_TIME"),
+  };
+
   const managerId   = (session.user as { id?: string }).id ?? "";
-  const managerName = session.user.name ?? "مدير المحطة";
+  const managerName = session.user.name ?? t("managerDefaultName");
 
   const assignments = await prisma.stationManagerAssignment.findMany({
     where:   { managerId, isActive: true },
@@ -115,7 +127,7 @@ export default async function SMSchedulePage({
               const dow = sd.getDay();
               dayEntries[dow].push({
                 ...base,
-                oneTimeDate: sd.toLocaleDateString("ar-EG", {
+                oneTimeDate: sd.toLocaleDateString(locale, {
                   timeZone: "Africa/Cairo", month: "short", day: "numeric",
                 }),
               });
@@ -135,7 +147,7 @@ export default async function SMSchedulePage({
   const hasAnySlots = DAY_ORDER.some((d) => dayEntries[d].length > 0);
 
   return (
-    <div dir="rtl" className="min-h-screen bg-slate-950 text-slate-100"
+    <div dir={dir} className="min-h-screen bg-slate-950 text-slate-100"
       style={{ fontFamily: "'Cairo','Segoe UI',system-ui,sans-serif" }}>
       <link rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" />
@@ -145,22 +157,27 @@ export default async function SMSchedulePage({
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <Link href="/station-manager"
-              className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-slate-100 transition-colors">←</Link>
+              className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-slate-100 transition-colors">
+              {dir === "rtl" ? "←" : "→"}
+            </Link>
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-700 flex items-center justify-center text-lg shadow flex-shrink-0">📅</div>
             <div>
-              <h1 className="text-base font-bold text-slate-100 leading-tight">جدول المحطة الأسبوعي</h1>
+              <h1 className="text-base font-bold text-slate-100 leading-tight">{t("pageTitle")}</h1>
               <p className="text-xs text-slate-500">{managerName}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Link href="/station-manager/programs"
-              className="text-xs text-slate-400 hover:text-violet-300 border border-slate-700 hover:border-violet-600/40 rounded-lg px-3 py-2 transition-colors">
-              ⚙️ البرامج
-            </Link>
-            <Link href="/station-manager"
-              className="text-xs text-slate-400 hover:text-teal-300 border border-slate-700 hover:border-teal-600/50 rounded-lg px-3 py-2 transition-colors">
-              ← اللوحة
-            </Link>
+          <div className="flex items-center gap-4">
+            <LanguageSwitcher />
+            <div className="flex items-center gap-2">
+              <Link href="/station-manager/programs"
+                className="text-xs text-slate-400 hover:text-violet-300 border border-slate-700 hover:border-violet-600/40 rounded-lg px-3 py-2 transition-colors">
+                {t("programsButton")}
+              </Link>
+              <Link href="/station-manager"
+                className="text-xs text-slate-400 hover:text-teal-300 border border-slate-700 hover:border-teal-600/50 rounded-lg px-3 py-2 transition-colors">
+                {t("backToDashboard")}
+              </Link>
+            </div>
           </div>
         </div>
       </header>
@@ -176,7 +193,7 @@ export default async function SMSchedulePage({
                   ? "bg-violet-950/50 text-violet-300 border-violet-600/50"
                   : "text-slate-400 border-slate-700 hover:border-slate-500"
               }`}>
-              كل المحطات
+              {t("allStations")}
             </Link>
             {Array.from(stationMap.entries()).map(([id, name]) => (
               <Link key={id} href={`/station-manager/schedule?station=${id}`}
@@ -193,14 +210,14 @@ export default async function SMSchedulePage({
 
         {/* Summary */}
         <p className="text-xs text-slate-500">
-          📺 {programs.length} برنامج · الأسبوع الحالي (يبدأ من السبت)
+          {t("summary", { count: programs.length })}
         </p>
 
         {/* Empty state */}
         {!hasAnySlots && (
-          <EmptyState icon="📅" title="لا توجد برامج مجدولة"
-            description="أضف جدولاً للبرامج من صفحة إدارة البرامج."
-            action={<Link href="/station-manager/programs" className="text-xs text-violet-400 hover:text-violet-300 border border-violet-700/30 hover:border-violet-500/50 rounded-lg px-4 py-2 transition-colors">⚙️ إدارة البرامج</Link>}
+          <EmptyState icon="📅" title={t("noProgramsTitle")}
+            description={t("noProgramsDesc")}
+            action={<Link href="/station-manager/programs" className="text-xs text-violet-400 hover:text-violet-300 border border-violet-700/30 hover:border-violet-500/50 rounded-lg px-4 py-2 transition-colors">{t("manageProgramsBtn")}</Link>}
           />
         )}
 
@@ -221,14 +238,14 @@ export default async function SMSchedulePage({
                     </h2>
                     {isToday && (
                       <span className="text-[10px] bg-violet-900/50 text-violet-300 border border-violet-600/40 px-2 py-0.5 rounded-full">
-                        اليوم
+                        {t("today")}
                       </span>
                     )}
                     <span className="text-xs text-slate-600">({entries.length})</span>
                   </div>
 
                   {entries.length === 0 && (
-                    <p className="text-xs text-slate-700 pb-2 pr-1">لا يوجد بث مجدول.</p>
+                    <p className={`text-xs text-slate-700 pb-2 ${dir === 'rtl' ? 'pr-1' : 'pl-1'}`}>{t("noBroadcast")}</p>
                   )}
 
                   {entries.length > 0 && (
@@ -240,8 +257,8 @@ export default async function SMSchedulePage({
                           }`}>
                           {/* Time range */}
                           <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm font-bold text-violet-300 font-mono">
-                              {e.startTime} – {e.endTime}
+                            <span className="text-sm font-bold text-violet-300 font-mono" dir="ltr">
+                              {e.startTime} - {e.endTime}
                             </span>
                             <span className="text-[10px] text-slate-500 bg-slate-800 border border-slate-700/40 px-2 py-0.5 rounded-full">
                               {RECURRENCE_LABELS[e.recurrenceType] ?? e.recurrenceType}
@@ -270,7 +287,7 @@ export default async function SMSchedulePage({
 
                           <Link href="/station-manager/programs"
                             className="text-[10px] text-slate-500 hover:text-violet-300 border border-slate-700/40 hover:border-violet-600/30 rounded-lg px-2 py-1 inline-block transition-colors mt-1">
-                            تعديل البرنامج →
+                            {t("editProgram")}
                           </Link>
                         </div>
                       ))}
@@ -286,25 +303,36 @@ export default async function SMSchedulePage({
   );
 }
 
-function NoStationsPage({ managerName }: { managerName: string }) {
+async function NoStationsPage({ managerName }: { managerName: string }) {
+  const t = await getTranslations("stationManager.schedule");
+  const locale = await getLocale();
+  const dir = isRtl(locale) ? "rtl" : "ltr";
+
   return (
-    <div dir="rtl" className="min-h-screen bg-slate-950 text-slate-100 flex flex-col"
+    <div dir={dir} className="min-h-screen bg-slate-950 text-slate-100 flex flex-col"
       style={{ fontFamily: "'Cairo','Segoe UI',system-ui,sans-serif" }}>
       <header className="bg-slate-900 border-b border-slate-800 shadow-lg">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center gap-3">
-          <Link href="/station-manager"
-            className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-slate-100 transition-colors">←</Link>
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-700 flex items-center justify-center text-lg shadow">📅</div>
-          <div>
-            <h1 className="text-base font-bold text-slate-100">جدول المحطة الأسبوعي</h1>
-            <p className="text-xs text-slate-500">{managerName}</p>
+        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <Link href="/station-manager"
+              className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-slate-100 transition-colors">
+              {dir === "rtl" ? "←" : "→"}
+            </Link>
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-700 flex items-center justify-center text-lg shadow flex-shrink-0">📅</div>
+            <div>
+              <h1 className="text-base font-bold text-slate-100 leading-tight">{t("pageTitle")}</h1>
+              <p className="text-xs text-slate-500">{managerName}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <LanguageSwitcher />
           </div>
         </div>
       </header>
       <main className="flex-1 flex items-center justify-center p-8">
-        <EmptyState icon="📢" title="لا توجد محطات مسندة"
-          description="تواصل مع الإدارة لتفعيل المحطات المرتبطة بحسابك."
-          action={<Link href="/station-manager" className="text-sm text-slate-400 hover:text-teal-300 border border-slate-700 hover:border-teal-600/30 rounded-lg px-4 py-2 transition-colors">← العودة للوحة</Link>}
+        <EmptyState icon="📢" title={t("noStationsAssigned")}
+          description={t("noStationsAssignedDesc")}
+          action={<Link href="/station-manager" className="text-sm text-slate-400 hover:text-teal-300 border border-slate-700 hover:border-teal-600/30 rounded-lg px-4 py-2 transition-colors">{t("backToDashboardAction")}</Link>}
         />
       </main>
     </div>

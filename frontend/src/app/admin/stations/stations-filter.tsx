@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { SearchFilter }       from "@/components/ui/SearchFilter";
 import { SegmentedFilter }    from "@/components/ui/SegmentedFilter";
 import { ClearFiltersButton } from "@/components/ui/ClearFiltersButton";
+import { useTranslations, useLocale } from "next-intl";
 
 type Props = {
   initialQ: string; initialStatus: string; initialHasDjCredential: string;
@@ -15,6 +16,10 @@ type Props = {
 
 export function AdminStationsFilter(p: Props) {
   const router = useRouter();
+  const t = useTranslations("admin.stations");
+  const tc = useTranslations("common");
+  const locale = useLocale();
+  const dir = locale === "ar" ? "rtl" : "ltr";
 
   const [q,               setQ]               = useState(p.initialQ);
   const [status,          setStatus]          = useState(p.initialStatus          || "all");
@@ -80,53 +85,53 @@ export function AdminStationsFilter(p: Props) {
   );
 
   return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 shadow-xl">
+    <div dir={dir} className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 shadow-xl">
       <div className="flex flex-col gap-5">
 
         {/* Search */}
         <SearchFilter
           value={q}
           onChange={setQ}
-          placeholder="ابحث باسم المحطة، Slug، أو الوصف..."
+          placeholder={t("filterSearchPlaceholder")}
         />
 
         {/* Row 1: Status · DJ Credential · Sort */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
 
           <div className="flex flex-col gap-2">
-            <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">الحالة</label>
+            <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">{tc("status")}</label>
             <SegmentedFilter
               value={status}
               options={[
-                { value: "all",      label: "الكل"        },
-                { value: "active",   label: "نشطة"        },
-                { value: "inactive", label: "غير نشطة"    },
+                { value: "all",      label: tc("all")        },
+                { value: "active",   label: t("active")        },
+                { value: "inactive", label: t("inactive")    },
               ]}
               onChange={(v) => { setStatus(v); apply({ newStatus: v }); }}
             />
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">بيانات DJ الافتراضية</label>
+            <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">{t("filterDjCredential")}</label>
             <SegmentedFilter
               value={hasDjCredential}
               options={[
-                { value: "all",     label: "الكل"       },
-                { value: "has",     label: "مُعدّة"     },
-                { value: "missing", label: "غير مُعدّة" },
+                { value: "all",     label: tc("all")       },
+                { value: "has",     label: t("setup")     },
+                { value: "missing", label: t("notSetup") },
               ]}
               onChange={(v) => { setHasDjCredential(v); apply({ newHasDjCredential: v }); }}
             />
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">ترتيب</label>
+            <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">{tc("sort")}</label>
             <SegmentedFilter
               value={sort}
               options={[
-                { value: "newest", label: "الأحدث"  },
-                { value: "oldest", label: "الأقدم"  },
-                { value: "name",   label: "الاسم أ-ي" },
+                { value: "newest", label: tc("newest")  },
+                { value: "oldest", label: tc("oldest")  },
+                { value: "name",   label: tc("nameAZ") },
               ]}
               onChange={(v) => { setSort(v); apply({ newSort: v }); }}
             />
@@ -138,39 +143,39 @@ export function AdminStationsFilter(p: Props) {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
 
           <div className="flex flex-col gap-2">
-            <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">المذيعون</label>
+            <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">{t("filterPresenters")}</label>
             <SegmentedFilter
               value={hasPresenters}
               options={[
-                { value: "all",  label: "الكل"         },
-                { value: "has",  label: "لديها مذيعون" },
-                { value: "none", label: "لا يوجد"      },
+                { value: "all",  label: tc("all")         },
+                { value: "has",  label: t("hasPresenters") },
+                { value: "none", label: tc("none")      },
               ]}
               onChange={(v) => { setHasPresenters(v); apply({ newHasPresenters: v }); }}
             />
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">البرامج</label>
+            <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">{t("filterPrograms")}</label>
             <SegmentedFilter
               value={hasPrograms}
               options={[
-                { value: "all",  label: "الكل"        },
-                { value: "has",  label: "لديها برامج" },
-                { value: "none", label: "لا يوجد"     },
+                { value: "all",  label: tc("all")        },
+                { value: "has",  label: t("hasPrograms") },
+                { value: "none", label: tc("none")     },
               ]}
               onChange={(v) => { setHasPrograms(v); apply({ newHasPrograms: v }); }}
             />
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">مدير المحطة</label>
+            <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">{t("filterManager")}</label>
             <SegmentedFilter
               value={hasManager}
               options={[
-                { value: "all",  label: "الكل"       },
-                { value: "has",  label: "لديها مدير" },
-                { value: "none", label: "لا يوجد"    },
+                { value: "all",  label: tc("all")       },
+                { value: "has",  label: t("hasManager") },
+                { value: "none", label: tc("none")    },
               ]}
               onChange={(v) => { setHasManager(v); apply({ newHasManager: v }); }}
             />
@@ -182,7 +187,7 @@ export function AdminStationsFilter(p: Props) {
 
       {hasActive && (
         <div className="flex justify-start mt-5 pt-4 border-t border-neutral-800">
-          <ClearFiltersButton onClick={clearAll} label="مسح كل الفلاتر" />
+          <ClearFiltersButton onClick={clearAll} label={tc("clearAllFilters")} />
         </div>
       )}
     </div>

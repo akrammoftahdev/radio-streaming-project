@@ -3,9 +3,7 @@ generator client {
 }
 
 datasource db {
-  // LOCAL DEV ONLY: sqlite (DATABASE_URL = "file:./dev.db")
-  // VPS / PRODUCTION: use schema.cloud.prisma (postgresql)
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -331,6 +329,15 @@ model Station {
   stationManagers       StationManagerAssignment[]   // managers assigned to this station
   recordings            Recording[]                  // recordings made on this station
   mediaCategories       MediaCategory[]              // media categories scoped to this station
+
+  // ── Listener Messaging Settings ──
+  isMessagingEnabled     Boolean @default(true) @map("is_messaging_enabled")
+  iframeLanguage         String? @default("ar") @map("iframe_language")
+  iframeTextColor        String? @map("iframe_text_color")
+  iframeBgColor          String? @map("iframe_bg_color")
+  iframeBorderColor      String? @map("iframe_border_color")
+  iframePlaceholderColor String? @map("iframe_placeholder_color")
+  listenerMessages       ListenerMessage[]            // listener messages for this station
 }
 
 // ── StationDefaultCredential ──────────────────────────────────────────────────
@@ -617,4 +624,23 @@ model DspPreset {
   presenter   User?    @relation(fields: [presenterId], references: [id], onDelete: Cascade)
 
   @@index([presenterId])
+}
+
+// ── ListenerMessage ─────────────────────────────────────────────────────────
+// Real-time chat messages from listeners sent via the public iframe embed.
+
+model ListenerMessage {
+  id          String   @id @default(uuid())
+  stationId   String   @map("station_id")
+  name        String
+  email       String?
+  phoneNumber String?  @map("phone_number")
+  country     String?
+  message     String
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  station     Station  @relation(fields: [stationId], references: [id], onDelete: Cascade)
+
+  @@index([stationId])
+  @@index([createdAt])
 }

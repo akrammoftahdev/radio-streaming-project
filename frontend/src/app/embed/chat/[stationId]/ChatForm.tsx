@@ -26,7 +26,7 @@ const COUNTRIES = [
   { code: "WW", name: "Other / Global", flag: "🌐" }
 ];
 
-export default function ChatForm({ stationId, translations, colors }: any) {
+export default function ChatForm({ stationId, translations, colors, isMessagingEnabled }: any) {
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [cooldown, setCooldown] = useState(0);
   const [isCountryOpen, setIsCountryOpen] = useState(false);
@@ -45,12 +45,27 @@ export default function ChatForm({ stationId, translations, colors }: any) {
   useEffect(() => {
     const interval = setInterval(async () => {
       const isEnabled = await checkMessagingStatus(stationId);
-      if (!isEnabled) {
+      if (isEnabled !== isMessagingEnabled) {
         window.location.reload();
       }
     }, 10000);
     return () => clearInterval(interval);
-  }, [stationId]);
+  }, [stationId, isMessagingEnabled]);
+
+  if (!isMessagingEnabled) {
+    const bgColor = colors.bgColor || "#0f172a";
+    const textColor = colors.textColor || "#ffffff";
+    const borderColor = colors.borderColor || "#334155";
+    
+    return (
+      <div style={{ background: bgColor, color: textColor, minHeight: "100vh", fontFamily: "'Cairo', sans-serif", padding: "24px", display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
+        <div style={{ border: `1px solid ${borderColor}`, padding: "24px", borderRadius: "12px", background: "rgba(0,0,0,0.2)" }}>
+          <div style={{ fontSize: "32px", marginBottom: "12px" }}>😴</div>
+          <p style={{ margin: 0, fontWeight: "500", lineHeight: "1.5" }}>{translations.offlineMessage}</p>
+        </div>
+      </div>
+    );
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -169,7 +184,7 @@ export default function ChatForm({ stationId, translations, colors }: any) {
             <label className="chat-label">{tl.country}</label>
             <div className="dropdown-container">
               <div className="dropdown-header" onClick={() => setIsCountryOpen(!isCountryOpen)}>
-                <span>{selectedCountryObj ? `${selectedCountryObj.flag} ${selectedCountryObj.name}` : `-- ${tl.country} --`}</span>
+                <span>{selectedCountryObj ? `${selectedCountryObj.flag} ${selectedCountryObj.name}` : `-- ${tl.selectCountry || "Select Country"} --`}</span>
                 <span style={{ fontSize: "10px" }}>▼</span>
               </div>
               {isCountryOpen && (

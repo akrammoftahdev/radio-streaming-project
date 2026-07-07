@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import type { PresenterActionResult } from "./actions";
 
@@ -22,6 +23,7 @@ export function CleanupButton({
   disabled,
   action,
 }: Props) {
+  const t = useTranslations("admin.presenters");
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [status, setStatus]        = useState<"idle" | "success" | "error">("idle");
@@ -45,7 +47,7 @@ export function CleanupButton({
 
   if (status === "success") {
     return (
-      <span className="text-xs text-emerald-400 font-medium">✅ تم بنجاح</span>
+      <span className="text-xs text-emerald-400 font-medium">✅ {t("success")}</span>
     );
   }
 

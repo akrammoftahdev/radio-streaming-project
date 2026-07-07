@@ -32,3 +32,4 @@ export { MultiSmartSelect }  from "./MultiSmartSelect";
 export type { SegmentOption }          from "./SegmentedFilter";
 export type { SmartSelectOption }      from "./SmartSelect";
 export type { MultiSmartSelectOption } from "./MultiSmartSelect";
+export { AutoRefresh } from "./AutoRefresh";

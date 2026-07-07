@@ -9,9 +9,17 @@ import type { PresenterRowClient } from "./presenter-card";
 import { SMStationFilter } from "@/components/sm-station-filter";
 import { SMSearchBar } from "@/components/sm-search-bar";
 import { Unauthorized } from "@/components/ui/Unauthorized";
+import { getTranslations } from "next-intl/server";
+import { getLocale } from "next-intl/server";
+import { isRtl } from "@/i18n/config";
+import LanguageSwitcher from "@/components/ui/LanguageSwitcher";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "مذيعو المحطة - EGONAIR" };
+
+export async function generateMetadata() {
+  const t = await getTranslations("stationManager.presenters");
+  return { title: `${t("title")} - EGONAIR` };
+}
 
 interface StationOption { id: string; name: string }
 
@@ -71,13 +79,17 @@ async function fetchPageData(managerId: string, filterStationId: string, q: stri
 export default async function StationManagerPresentersPage({
   searchParams,
 }: { searchParams?: Promise<Record<string, string | undefined>> }) {
+  const t = await getTranslations("stationManager.presenters");
+  const locale = await getLocale();
+  const dir = isRtl(locale) ? "rtl" : "ltr";
+
   const session = await auth();
   if (!session?.user) redirect("/login");
   const role = (session.user as any)?.role as string;
   if (role !== "STATION_MANAGER") return <Unauthorized role={role} />;
 
   const managerId   = (session.user as any)?.id as string;
-  const managerName = session.user.name ?? session.user.email ?? "مدير المحطة";
+  const managerName = session.user.name ?? session.user.email ?? "Station Manager";
 
   const sp = await searchParams;
   const filterStationId = sp?.stationId ?? "";
@@ -94,7 +106,7 @@ export default async function StationManagerPresentersPage({
   }));
 
   return (
-    <div dir="rtl" className="min-h-screen bg-slate-950 text-slate-100"
+    <div dir={dir} className="min-h-screen bg-slate-950 text-slate-100"
       style={{ fontFamily: "'Cairo','Segoe UI',system-ui,sans-serif" }}>
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" />
 
@@ -104,20 +116,23 @@ export default async function StationManagerPresentersPage({
             <Link href="/station-manager" className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-slate-100 transition-colors">←</Link>
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-lg shadow">🎙️</div>
             <div>
-              <h1 className="text-base font-bold text-slate-100 leading-tight">مذيعو المحطة</h1>
+              <h1 className="text-base font-bold text-slate-100 leading-tight">{t("title")}</h1>
               <p className="text-xs text-slate-500">{managerName}</p>
             </div>
           </div>
-          <Link href="/station-manager" className="text-xs text-slate-400 hover:text-teal-300 border border-slate-700 hover:border-teal-600/50 rounded-lg px-3 py-2 transition-colors">← اللوحة</Link>
+          <div className="flex items-center gap-4">
+            <LanguageSwitcher />
+            <Link href="/station-manager" className="text-xs text-slate-400 hover:text-teal-300 border border-slate-700 hover:border-teal-600/50 rounded-lg px-3 py-2 transition-colors">← {t("dashboard")}</Link>
+          </div>
         </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-8 space-y-8">
         {spError   && <div className="bg-red-950/50 border border-red-500/30 text-red-400 rounded-xl px-4 py-3 text-sm">⚠️ {spError}</div>}
-        {spSuccess && <div className="bg-emerald-950/50 border border-emerald-500/30 text-emerald-400 rounded-xl px-4 py-3 text-sm">✅ {spSuccess === "created" ? "تم إنشاء المذيع." : "تمت العملية."}</div>}
+        {spSuccess && <div className="bg-emerald-950/50 border border-emerald-500/30 text-emerald-400 rounded-xl px-4 py-3 text-sm">✅ {spSuccess === "created" ? t("createdSuccess") : t("opSuccess")}</div>}
 
         {stations.length === 0 && (
-          <EmptyState icon="📭" title="لا توجد محطات مسندة" description="لم يتم إسناد أي محطة لحسابك. تواصل مع الإدارة لتفعيل صلاحياتك." />
+          <EmptyState icon="📭" title={t("noAssignedTitle")} description={t("noAssignedDesc")} />
         )}
 
         {stations.length > 0 && (
@@ -129,32 +144,32 @@ export default async function StationManagerPresentersPage({
                   stations={stationsWithCount}
                   paramKey="stationId"
                   accent="teal"
-                  allLabel="كل المحطات"
+                  allLabel={t("allStations")}
                 />
               )}
-              <SMSearchBar placeholder="بحث باسم المذيع أو اسم المستخدم..." paramKey="q" />
+              <SMSearchBar placeholder={t("searchPlaceholder")} paramKey="q" />
             </div>
 
             {/* Create form */}
             <section className="bg-slate-900 border border-slate-700/50 rounded-2xl p-6">
-              <h2 className="text-base font-bold text-slate-100 mb-1 flex items-center gap-2"><span>➕</span> إضافة مذيع جديد</h2>
-              <p className="text-xs text-slate-500 mb-5">نوع الحساب: <span className="text-indigo-400 font-semibold">SINGLE_STATION</span></p>
+              <h2 className="text-base font-bold text-slate-100 mb-1 flex items-center gap-2"><span>➕</span> {t("addNew")}</h2>
+              <p className="text-xs text-slate-500 mb-5">{t("accountType")} <span className="text-indigo-400 font-semibold">SINGLE_STATION</span></p>
               <form action={createPresenterAction} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <SField label="الاسم الكامل"       name="name"     type="text" />
-                <SField label="اسم المستخدم *"     name="username" type="text"     dir="ltr" required />
-                <SField label="البريد الإلكتروني"  name="email"    type="email"    dir="ltr" />
-                <SField label="رقم الهاتف"          name="phone"    type="text"     dir="ltr" />
-                <SField label="كلمة المرور *"       name="password" type="password" dir="ltr" required />
+                <SField label={t("fullName")}       name="name"     type="text" />
+                <SField label={t("username")}       name="username" type="text"     dir="ltr" required />
+                <SField label={t("email")}          name="email"    type="email"    dir="ltr" />
+                <SField label={t("phone")}          name="phone"    type="text"     dir="ltr" />
+                <SField label={t("password")}       name="password" type="password" dir="ltr" required />
                 <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1">المحطة *</label>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">{t("station")}</label>
                   <select name="stationId" required defaultValue={stations.length === 1 ? stations[0].id : ""}
                     className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500 transition-colors">
-                    {stations.length > 1 && <option value="" disabled>اختر محطة...</option>}
+                    {stations.length > 1 && <option value="" disabled>{t("selectStation")}</option>}
                     {stations.map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}
                   </select>
                 </div>
                 <div className="sm:col-span-2 flex justify-end">
-                  <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-xl px-6 py-2.5 transition-colors">إنشاء المذيع</button>
+                  <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-xl px-6 py-2.5 transition-colors">{t("createBtn")}</button>
                 </div>
               </form>
             </section>
@@ -162,10 +177,10 @@ export default async function StationManagerPresentersPage({
             {/* Presenter list */}
             <section>
               <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-widest mb-4">
-                المذيعون ({presenters.length})
+                {t("presentersList")} ({presenters.length})
               </h2>
               {presenters.length === 0
-                ? <EmptyState icon="🎙️" title="لا يوجد مذيعون مطابقون" description="جرب تعديل فلاتر البحث." />
+                ? <EmptyState icon="🎙️" title={t("noPresentersTitle")} description={t("noPresentersDesc")} />
                 : <div className="space-y-4">
                     {presenters.map((p) => (
                       <PresenterCard key={p.id} presenter={p} assignedStationIds={assignedStationIds} />

@@ -36,7 +36,6 @@ Browser (Presenter)
 | Framework | Next.js 15 (App Router) |
 | Language | TypeScript |
 | Auth | NextAuth v5 (credentials strategy, JWT sessions) |
-| Database | Prisma ORM + SQLite (`frontend/prisma/dev.db`) |
 | Styling | Tailwind CSS |
 | Direction | RTL (Arabic UI) |
 | Dev command | `npm run dev` (inside `frontend/`) |
@@ -76,10 +75,8 @@ Review before modifying any port or service name.
 
 ---
 
-## Database Schema (Prisma / SQLite)
 
 Location: `frontend/prisma/schema.prisma`
-Database file: `frontend/prisma/dev.db` and `frontend/dev.db` (symlinked or copied)
 
 ### Models
 
@@ -183,7 +180,6 @@ backend-audio/debug-recordings/
 ### `frontend/.env`
 | Variable | Purpose |
 |---|---|
-| `DATABASE_URL` | SQLite path (`file:./dev.db`) |
 | `NEXTAUTH_SECRET` | JWT signing secret |
 | `ENCRYPTION_KEY` | AES-256-GCM key for SonicPanel credential encryption |
 

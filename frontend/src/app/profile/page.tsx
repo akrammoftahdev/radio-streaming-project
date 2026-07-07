@@ -3,43 +3,19 @@ import { redirect } from "next/navigation";
 import { updateMyProfile, changeMyPassword } from "./actions";
 import AvatarUpload from "./avatar-upload";
 import DirectDjRadiosSection, { type DjRadio } from "./direct-dj-radios";
+import { getTranslations, getLocale } from "next-intl/server";
+import { isRtl } from "@/i18n/config";
+import LanguageSwitcher from "@/components/ui/LanguageSwitcher";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "ملفي الشخصي - EGONAIR",
-};
-
 // ── Role display helpers ──────────────────────────────────────────────────────
 
-const ROLE_LABELS: Record<string, { label: string; color: string; icon: string }> = {
-  ADMIN:           { label: "مدير النظام",  color: "bg-red-500/10 text-red-400 border-red-500/30",       icon: "🛡️" },
-  STATION_MANAGER: { label: "مدير المحطة",  color: "bg-teal-500/10 text-teal-400 border-teal-500/30",    icon: "📡" },
-  PRESENTER:       { label: "مذيع",         color: "bg-indigo-500/10 text-indigo-400 border-indigo-500/30", icon: "🎙️" },
+const ROLE_STYLES: Record<string, { color: string; icon: string }> = {
+  ADMIN:           { color: "bg-red-500/10 text-red-400 border-red-500/30",       icon: "🛡️" },
+  STATION_MANAGER: { color: "bg-teal-500/10 text-teal-400 border-teal-500/30",    icon: "📡" },
+  PRESENTER:       { color: "bg-indigo-500/10 text-indigo-400 border-indigo-500/30", icon: "🎙️" },
 };
-
-// ── Error / success message maps ──────────────────────────────────────────────
-
-function getProfileError(error?: string): string | null {
-  const map: Record<string, string> = {
-    email_format: "صيغة البريد الإلكتروني غير صحيحة.",
-    email_taken:  "البريد الإلكتروني مستخدم بالفعل من حساب آخر.",
-    avatar_url:   "رابط الصورة غير صالح. يجب أن يبدأ بـ https:// أو http://",
-  };
-  return error ? (map[error] ?? null) : null;
-}
-
-function getPwError(pwError?: string): string | null {
-  const map: Record<string, string> = {
-    current_empty:  "كلمة المرور الحالية مطلوبة.",
-    new_empty:      "كلمة المرور الجديدة مطلوبة.",
-    confirm_empty:  "تأكيد كلمة المرور مطلوب.",
-    short:          "كلمة المرور يجب أن تكون 6 أحرف على الأقل.",
-    mismatch:       "كلمة المرور الجديدة وتأكيدها غير متطابقتين.",
-    wrong_current:  "كلمة المرور الحالية غير صحيحة.",
-  };
-  return pwError ? (map[pwError] ?? null) : null;
-}
 
 // ── basePath display helper ──────────────────────────────────────────────────
 // DB stores deployment-neutral paths: /uploads/avatars/file.png
@@ -62,6 +38,11 @@ export default async function MyProfilePage({
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
+  const t = await getTranslations("profile");
+  const tRoles = await getTranslations("roles");
+  const locale = await getLocale();
+  const dir = isRtl(locale) ? "rtl" : "ltr";
+
   const userId = session.user.id;
 
   const user = await prisma.user.findUnique({
@@ -73,10 +54,37 @@ export default async function MyProfilePage({
 
   const { saved, error, pwError, djError, djSaved } = await searchParams;
 
+  // ── Error / success message maps ──────────────────────────────────────────
+  function getProfileError(err?: string): string | null {
+    const map: Record<string, string> = {
+      email_format: t("emailFormatError"),
+      email_taken:  t("emailTakenError"),
+      avatar_url:   t("avatarUrlError"),
+    };
+    return err ? (map[err] ?? null) : null;
+  }
+
+  function getPwError(pw?: string): string | null {
+    const map: Record<string, string> = {
+      current_empty:  t("pwCurrentEmpty"),
+      new_empty:      t("pwNewEmpty"),
+      confirm_empty:  t("pwConfirmEmpty"),
+      short:          t("pwShort"),
+      mismatch:       t("pwMismatch"),
+      wrong_current:  t("pwWrongCurrent"),
+    };
+    return pw ? (map[pw] ?? null) : null;
+  }
+
   const profileError = getProfileError(error);
   const pwErrorMsg   = getPwError(pwError);
 
-  const roleInfo  = ROLE_LABELS[user.role] ?? { label: user.role, color: "bg-neutral-800 text-neutral-400 border-neutral-700", icon: "👤" };
+  // Role label from translations
+  const roleLabel = (() => {
+    try { return tRoles(user.role); } catch { return user.role; }
+  })();
+  const roleStyle = ROLE_STYLES[user.role] ?? { color: "bg-neutral-800 text-neutral-400 border-neutral-700", icon: "👤" };
+
   const avatarUrl        = user.profile?.avatarUrl ?? null;
   const displayAvatarUrl = toDisplayUrl(avatarUrl);
 
@@ -91,7 +99,6 @@ export default async function MyProfilePage({
   }
 
   // ── Back link by role ──────────────────────────────────────────────────────
-  // Plain <a> tags do NOT receive basePath injection — include /stream explicitly.
   const backHref =
     user.role === "ADMIN"           ? "/admin"           :
     user.role === "STATION_MANAGER" ? "/station-manager" :
@@ -101,11 +108,7 @@ export default async function MyProfilePage({
   const initials = (user.name ?? user.username).slice(0, 2).toUpperCase();
 
   return (
-    <div dir="rtl" className="min-h-screen bg-neutral-950 text-neutral-100 p-4 sm:p-8 font-sans">
-      <link
-        rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap"
-      />
+    <div dir={dir} className="min-h-screen bg-neutral-950 text-neutral-100 p-4 sm:p-8 font-sans">
       <div className="max-w-2xl mx-auto">
 
         {/* ── Header ── */}
@@ -113,7 +116,7 @@ export default async function MyProfilePage({
           <a
             href={backHref}
             className="p-2 bg-neutral-900 hover:bg-neutral-800 rounded-lg transition-colors border border-neutral-800 flex-shrink-0"
-            aria-label="رجوع"
+            aria-label={t("backLabel")}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
@@ -121,14 +124,15 @@ export default async function MyProfilePage({
           </a>
           <div>
             <h1 className="text-3xl font-bold bg-gradient-to-l from-indigo-400 to-cyan-400 bg-clip-text text-transparent">
-              ملفي الشخصي
+              {t("pageTitle")}
             </h1>
             <p className="text-xs text-neutral-500 mt-0.5">EGONAIR</p>
           </div>
-          <span className={`mr-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border ${roleInfo.color}`}>
-            <span>{roleInfo.icon}</span>
-            {roleInfo.label}
+          <span className={`mr-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border ${roleStyle.color}`}>
+            <span>{roleStyle.icon}</span>
+            {roleLabel}
           </span>
+          <LanguageSwitcher compact />
         </div>
 
         {/* ── Hero avatar ── */}
@@ -137,7 +141,7 @@ export default async function MyProfilePage({
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={displayAvatarUrl}
-              alt="صورة الحساب"
+              alt={t("avatarAlt")}
               className="w-24 h-24 rounded-full object-cover border-4 border-neutral-800 shadow-xl"
             />
           ) : (
@@ -151,7 +155,7 @@ export default async function MyProfilePage({
         {saved === "profile" && (
           <div className="flex items-center gap-2.5 bg-emerald-500/10 border border-emerald-500/25 rounded-xl px-5 py-3.5 text-emerald-400 text-sm mb-5">
             <span>✅</span>
-            تم تحديث بيانات الملف الشخصي بنجاح.
+            {t("profileSaved")}
           </div>
         )}
 
@@ -164,17 +168,17 @@ export default async function MyProfilePage({
         )}
 
         {/* ═══════════════════════════════════════════════════════════════════
-            Card 1 — صورة الحساب
+            Card 1 — Avatar
         ═══════════════════════════════════════════════════════════════════ */}
         <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 md:p-8 shadow-xl mb-6">
           <div className="flex items-center gap-2 mb-5">
             <span className="text-lg">🖼️</span>
-            <h2 className="text-lg font-semibold text-neutral-200">صورة الحساب</h2>
+            <h2 className="text-lg font-semibold text-neutral-200">{t("avatarSection")}</h2>
           </div>
           <AvatarUpload currentAvatarUrl={avatarUrl} initials={initials} />
           <details className="mt-5">
             <summary className="text-xs text-neutral-600 cursor-pointer hover:text-neutral-400 transition-colors select-none">
-              أو أدخل رابط صورة مباشرة
+              {t("avatarUrlLabel")}
             </summary>
             <form action={updateMyProfile} className="mt-3 space-y-3">
               <input type="hidden" name="name"  value={user.name  ?? ""} />
@@ -193,14 +197,14 @@ export default async function MyProfilePage({
                 type="submit"
                 className="w-full bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-sm font-medium rounded-xl px-4 py-2.5 transition-all"
               >
-                حفظ الرابط
+                {t("saveUrl")}
               </button>
             </form>
           </details>
         </div>
 
         {/* ═══════════════════════════════════════════════════════════════════
-            Card 1b — إذاعات DJ المباشر (DIRECT_DJ only)
+            Card 1b — Direct DJ Radios (DIRECT_DJ only)
         ═══════════════════════════════════════════════════════════════════ */}
         {user.role === "PRESENTER" && user.presenterMode === "DIRECT_DJ" && (
           <DirectDjRadiosSection
@@ -211,12 +215,12 @@ export default async function MyProfilePage({
         )}
 
         {/* ═══════════════════════════════════════════════════════════════════
-            Card 2 — بيانات الحساب
+            Card 2 — Account Info
         ═══════════════════════════════════════════════════════════════════ */}
         <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 md:p-8 shadow-xl mb-6">
           <div className="flex items-center gap-2 mb-5">
             <span className="text-lg">👤</span>
-            <h2 className="text-lg font-semibold text-neutral-200">بيانات الحساب</h2>
+            <h2 className="text-lg font-semibold text-neutral-200">{t("accountInfo")}</h2>
           </div>
 
           <form action={updateMyProfile} className="space-y-5">
@@ -225,7 +229,7 @@ export default async function MyProfilePage({
 
             {/* Read-only: username */}
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-neutral-500">اسم المستخدم (لا يمكن تغييره)</label>
+              <label className="text-xs font-medium text-neutral-500">{t("usernameReadonly")}</label>
               <div className="w-full bg-neutral-950/50 border border-neutral-800 rounded-xl px-4 py-3 text-neutral-500 font-mono text-sm text-left" dir="ltr">
                 {user.username}
               </div>
@@ -233,13 +237,13 @@ export default async function MyProfilePage({
 
             {/* Name */}
             <div className="space-y-1.5">
-              <label htmlFor="profile-name" className="text-sm font-medium text-neutral-300">الاسم</label>
+              <label htmlFor="profile-name" className="text-sm font-medium text-neutral-300">{t("nameLabel")}</label>
               <input
                 id="profile-name"
                 name="name"
                 type="text"
                 defaultValue={user.name ?? ""}
-                placeholder="اسم العرض الخاص بك"
+                placeholder={t("namePlaceholder")}
                 className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-neutral-100 placeholder:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
               />
             </div>
@@ -247,7 +251,7 @@ export default async function MyProfilePage({
             {/* Email + Phone */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label htmlFor="profile-email" className="text-sm font-medium text-neutral-300">البريد الإلكتروني</label>
+                <label htmlFor="profile-email" className="text-sm font-medium text-neutral-300">{t("email")}</label>
                 <input
                   id="profile-email"
                   name="email"
@@ -259,7 +263,7 @@ export default async function MyProfilePage({
                 />
               </div>
               <div className="space-y-1.5">
-                <label htmlFor="profile-phone" className="text-sm font-medium text-neutral-300">رقم الهاتف</label>
+                <label htmlFor="profile-phone" className="text-sm font-medium text-neutral-300">{t("phone")}</label>
                 <input
                   id="profile-phone"
                   name="phone"
@@ -278,14 +282,14 @@ export default async function MyProfilePage({
                 id="profile-save-btn"
                 className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl px-4 py-3 transition-all shadow-lg shadow-indigo-500/20"
               >
-                حفظ بيانات الملف الشخصي
+                {t("saveProfile")}
               </button>
             </div>
           </form>
         </div>
 
         {/* ═══════════════════════════════════════════════════════════════════
-            Card 3 — تغيير كلمة المرور
+            Card 3 — Change Password
         ═══════════════════════════════════════════════════════════════════ */}
         <div
           id="change-password"
@@ -293,14 +297,14 @@ export default async function MyProfilePage({
         >
           <div className="flex items-center gap-2 mb-1">
             <span className="text-lg">🔑</span>
-            <h2 className="text-lg font-semibold text-neutral-200">تغيير كلمة المرور</h2>
+            <h2 className="text-lg font-semibold text-neutral-200">{t("changePassword")}</h2>
           </div>
-          <p className="text-xs text-neutral-500 mb-5">أدخل كلمة مرورك الحالية ثم اختر كلمة مرور جديدة.</p>
+          <p className="text-xs text-neutral-500 mb-5">{t("passwordChangePrompt")}</p>
 
           {saved === "password" && (
             <div className="flex items-center gap-2.5 bg-emerald-500/10 border border-emerald-500/25 rounded-xl px-5 py-3.5 text-emerald-400 text-sm mb-5">
               <span>✅</span>
-              تم تغيير كلمة المرور بنجاح.
+              {t("passwordChangedSuccess")}
             </div>
           )}
           {pwErrorMsg && (
@@ -313,7 +317,7 @@ export default async function MyProfilePage({
           <form action={changeMyPassword} className="space-y-4">
             <div className="space-y-1.5">
               <label htmlFor="pw-current" className="text-sm font-medium text-neutral-300">
-                كلمة المرور الحالية <span className="text-red-500">*</span>
+                {t("currentPassword")} <span className="text-red-500">*</span>
               </label>
               <input
                 id="pw-current"
@@ -329,7 +333,7 @@ export default async function MyProfilePage({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label htmlFor="pw-new" className="text-sm font-medium text-neutral-300">
-                  كلمة المرور الجديدة <span className="text-red-500">*</span>
+                  {t("newPassword")} <span className="text-red-500">*</span>
                 </label>
                 <input
                   id="pw-new"
@@ -344,7 +348,7 @@ export default async function MyProfilePage({
               </div>
               <div className="space-y-1.5">
                 <label htmlFor="pw-confirm" className="text-sm font-medium text-neutral-300">
-                  تأكيد كلمة المرور <span className="text-red-500">*</span>
+                  {t("confirmPassword")} <span className="text-red-500">*</span>
                 </label>
                 <input
                   id="pw-confirm"
@@ -358,14 +362,14 @@ export default async function MyProfilePage({
                 />
               </div>
             </div>
-            <p className="text-xs text-neutral-600">كلمة المرور يجب أن تكون 6 أحرف على الأقل.</p>
+            <p className="text-xs text-neutral-600">{t("passwordMinLength")}</p>
             <div className="pt-2">
               <button
                 type="submit"
                 id="pw-change-btn"
                 className="w-full bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-xl px-4 py-3 transition-all shadow-lg shadow-amber-500/10"
               >
-                تغيير كلمة المرور
+                {t("changePasswordBtn")}
               </button>
             </div>
           </form>

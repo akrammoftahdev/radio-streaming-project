@@ -9,7 +9,7 @@ import { EmptyState }  from "@/components/ui/EmptyState";
 import { AdminPageShell } from "@/components/ui";
 import { getTranslations } from "next-intl/server";
 import LanguageSwitcher from "@/components/ui/LanguageSwitcher";
-
+import { CheckCircle } from "lucide-react";
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata() {
@@ -37,7 +37,7 @@ export default async function StationsPage({
   const session = await auth();
   const t = await getTranslations("admin.stations");
   const tc = await getTranslations("common");
-  const tl = await getTranslations("LiveMessaging");
+  const tl = await getTranslations("studio.LiveMessaging");
   if (!session || (session.user as any).role !== "ADMIN") {
     redirect("/login");
   }
@@ -47,6 +47,7 @@ export default async function StationsPage({
   const showNew     = params.new     === "1" && !editingId;
   const justUpdated = params.updated === "1";
   const djSaved     = justUpdated && params.dj === "1";
+  const msgSaved    = params.updated === "msg";
   const justCreated = !!params.created;
   const djCreated   = params.created === "dj";
 
@@ -490,6 +491,12 @@ export default async function StationsPage({
                 📥 {tl("inbox")}
               </Link>
             </div>
+            {msgSaved && (
+              <div className="mb-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 p-3 rounded-xl flex items-center gap-2 animate-in fade-in">
+                <CheckCircle className="w-5 h-5" />
+                <p className="text-sm font-medium">{t("stationUpdated")}</p>
+              </div>
+            )}
             <form action={updateStationMessaging} className="space-y-4">
               <input type="hidden" name="stationId" value={editingStation.id} />
               <div className="flex items-center gap-3 pb-3 border-b border-slate-700">
@@ -501,7 +508,14 @@ export default async function StationsPage({
                 </label>
                 <span className="text-xs text-amber-400 ml-auto">{tl("disableWarning")}</span>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-2">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 pt-2">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-300">{tl("language") || "Language"}</label>
+                  <select name="iframeLanguage" defaultValue={editingStation.iframeLanguage || "ar"} className={inputCls + " w-full bg-slate-900 border-slate-700"}>
+                    <option value="ar">العربية (Arabic)</option>
+                    <option value="en">English</option>
+                  </select>
+                </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium text-slate-300">{tl("textColor")}</label>
                   <div className="flex gap-2">

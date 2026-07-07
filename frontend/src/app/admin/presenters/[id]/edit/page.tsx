@@ -1,4 +1,5 @@
 import { auth, prisma } from "@/auth";
+import { getTranslations } from "next-intl/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
@@ -6,9 +7,10 @@ import { encrypt, decrypt } from "@/lib/encryption";
 import bcrypt from "bcrypt";
 import ConfirmSubmitButton from "@/components/confirm-submit-button";
 
-export const metadata = {
-  title: "تعديل المذيع - EGONAIR",
-};
+export async function generateMetadata() {
+  const t = await getTranslations("admin.presenters");
+  return { title: t("editPageTitle", { name: "EGONAIR" }) };
+}
 
 export default async function EditPresenterPage({
   params,
@@ -24,6 +26,8 @@ export default async function EditPresenterPage({
   }
 
   const { id: presenterId } = await params;
+  const t = await getTranslations("admin.presenters");
+  const tc = await getTranslations("common");
 
   const presenter = await prisma.user.findUnique({
     where: { id: presenterId },
@@ -80,6 +84,8 @@ export default async function EditPresenterPage({
   // For SINGLE_STATION: this action should never be submitted (UI is read-only).
   async function updatePresenterStations(formData: FormData) {
     "use server";
+    const t = await getTranslations("admin.presenters");
+    const tc = await getTranslations("common");
 
     const session = await auth();
     if (!session || (session.user as any).role !== "ADMIN") {
@@ -88,12 +94,12 @@ export default async function EditPresenterPage({
 
     const target = await prisma.user.findUnique({ where: { id: presenterId } });
     if (!target || target.role !== "PRESENTER") {
-      throw new Error("المذيع غير موجود.");
+      throw new Error(t("presenterNotFound"));
     }
 
     // SINGLE_STATION must not change station via this form
     if (target.presenterMode === "SINGLE_STATION") {
-      throw new Error("لا يمكن تغيير محطة مذيع المحطة الواحدة من هذه الصفحة.");
+      throw new Error(t("errorCannotChangeSingleStation"));
     }
 
     const selectedIds = formData.getAll("stationIds") as string[];
@@ -113,7 +119,7 @@ export default async function EditPresenterPage({
       const validIds = new Set(validStations.map((s) => s.id));
       for (const sid of selectedIds) {
         if (!validIds.has(sid)) {
-          throw new Error(`المحطة ${sid} غير موجودة أو غير نشطة.`);
+          throw new Error(t("errorStationNotFound", { sid }));
         }
       }
     }
@@ -157,6 +163,8 @@ export default async function EditPresenterPage({
 
   async function updatePresenter(formData: FormData) {
     "use server";
+    const t = await getTranslations("admin.presenters");
+    const tc = await getTranslations("common");
     
     const session = await auth();
     if (!session || (session.user as any).role !== "ADMIN") {
@@ -174,7 +182,7 @@ export default async function EditPresenterPage({
     const resolvedMode = validModes.includes(presenterMode) ? presenterMode : "SINGLE_STATION";
 
     if (!username || username.trim().length < 3) {
-      throw new Error("اسم المستخدم يجب أن يكون 3 أحرف على الأقل");
+      throw new Error(t("errorUsernameTooShort"));
     }
 
     const existingUser = await prisma.user.findUnique({
@@ -182,7 +190,7 @@ export default async function EditPresenterPage({
     });
 
     if (existingUser && existingUser.id !== presenterId) {
-      throw new Error("اسم المستخدم مستخدم بالفعل");
+      throw new Error(t("errorUsernameTaken"));
     }
 
     await prisma.user.update({
@@ -235,7 +243,7 @@ export default async function EditPresenterPage({
           where: { presenterId, stationId: rawStationId, isActive: true },
         });
         if (!validLink) {
-          throw new Error("المحطة المختارة غير مرتبطة بهذا المذيع.");
+          throw new Error(t("errorStationNotLinked"));
         }
         resolvedStationId = rawStationId;
       }
@@ -279,6 +287,8 @@ export default async function EditPresenterPage({
   // Changes only the passwordHash field. Never touches any other presenter data.
   async function updatePresenterPassword(formData: FormData) {
     "use server";
+    const t = await getTranslations("admin.presenters");
+    const tc = await getTranslations("common");
 
     const session = await auth();
     if (!session || (session.user as any).role !== "ADMIN") {
@@ -287,7 +297,7 @@ export default async function EditPresenterPage({
 
     const target = await prisma.user.findUnique({ where: { id: presenterId } });
     if (!target || target.role !== "PRESENTER") {
-      throw new Error("المذيع غير موجود.");
+      throw new Error(t("presenterNotFound"));
     }
 
     const newPassword    = (formData.get("newPassword")     as string | null)?.trim() ?? "";
@@ -320,12 +330,14 @@ export default async function EditPresenterPage({
   // ── createDirectDjRadio ───────────────────────────────────────────────────
   async function createDirectDjRadio(formData: FormData) {
     "use server";
+    const t = await getTranslations("admin.presenters");
+    const tc = await getTranslations("common");
     const session = await auth();
     if (!session || (session.user as any).role !== "ADMIN") throw new Error("Unauthorized");
 
     const target = await prisma.user.findUnique({ where: { id: presenterId }, select: { presenterMode: true } });
-    if (!target) throw new Error("المذيع غير موجود.");
-    if (!['DIRECT_DJ'].includes(target.presenterMode)) throw new Error("وضع الحساب لا يسمح بإضافة إذاعات مباشرة.");
+    if (!target) throw new Error(t("presenterNotFound"));
+    if (!['DIRECT_DJ'].includes(target.presenterMode)) throw new Error(t("errorModeNotDirectDj"));
 
     const radioName = (formData.get("radioName") as string)?.trim();
     const host      = (formData.get("host")      as string)?.trim();
@@ -337,13 +349,13 @@ export default async function EditPresenterPage({
     const bitrateRaw = formData.get("bitrate");
     const isActive  = formData.get("isActive") === "on";
 
-    if (!radioName) throw new Error("اسم الإذاعة مطلوب.");
-    if (!host)      throw new Error("الخادم (Host) مطلوب.");
-    if (!djUser)    throw new Error("اسم مستخدم DJ مطلوب.");
-    if (!password)  throw new Error("كلمة المرور مطلوبة.");
+    if (!radioName) throw new Error(t("errorRadioNameRequired"));
+    if (!host)      throw new Error(t("errorHostRequired"));
+    if (!djUser)    throw new Error(t("errorDjUserRequired"));
+    if (!password)  throw new Error(t("errorPasswordRequired"));
 
     const port = parseInt(String(portRaw), 10);
-    if (isNaN(port) || port < 1 || port > 65535) throw new Error("المنفذ (Port) يجب أن يكون بين 1 و 65535.");
+    if (isNaN(port) || port < 1 || port > 65535) throw new Error(t("errorPortInvalid"));
 
     const bitrate = parseInt(String(bitrateRaw), 10) || 128;
 
@@ -362,12 +374,14 @@ export default async function EditPresenterPage({
   // ── toggleDirectDjRadio ───────────────────────────────────────────────────
   async function toggleDirectDjRadio(formData: FormData) {
     "use server";
+    const t = await getTranslations("admin.presenters");
+    const tc = await getTranslations("common");
     const session = await auth();
     if (!session || (session.user as any).role !== "ADMIN") throw new Error("Unauthorized");
     const radioId = formData.get("radioId") as string;
-    if (!radioId) throw new Error("معرّف الإذاعة مطلوب.");
+    if (!radioId) throw new Error(t("errorRadioIdRequired"));
     const radio = await prisma.directDjRadio.findFirst({ where: { id: radioId, presenterId } });
-    if (!radio) throw new Error("الإذاعة غير موجودة.");
+    if (!radio) throw new Error(t("errorRadioNotFound"));
     await prisma.directDjRadio.update({ where: { id: radioId }, data: { isActive: !radio.isActive } });
     revalidatePath(`/admin/presenters/${presenterId}/edit`);
     const { redirect: rdr } = await import("next/navigation");
@@ -377,12 +391,14 @@ export default async function EditPresenterPage({
   // ── deleteDirectDjRadio ───────────────────────────────────────────────────
   async function deleteDirectDjRadio(formData: FormData) {
     "use server";
+    const t = await getTranslations("admin.presenters");
+    const tc = await getTranslations("common");
     const session = await auth();
     if (!session || (session.user as any).role !== "ADMIN") throw new Error("Unauthorized");
     const radioId = formData.get("radioId") as string;
-    if (!radioId) throw new Error("معرّف الإذاعة مطلوب.");
+    if (!radioId) throw new Error(t("errorRadioIdRequired"));
     const radio = await prisma.directDjRadio.findFirst({ where: { id: radioId, presenterId } });
-    if (!radio) throw new Error("الإذاعة غير موجودة.");
+    if (!radio) throw new Error(t("errorRadioNotFound"));
     await prisma.directDjRadio.delete({ where: { id: radioId } });
     revalidatePath(`/admin/presenters/${presenterId}/edit`);
     const { redirect: rdr } = await import("next/navigation");
@@ -392,6 +408,8 @@ export default async function EditPresenterPage({
   // ── updateDirectDjRadio ───────────────────────────────────────────
   async function updateDirectDjRadio(formData: FormData) {
     "use server";
+    const t = await getTranslations("admin.presenters");
+    const tc = await getTranslations("common");
     const session = await auth();
     if (!session || (session.user as any).role !== "ADMIN") throw new Error("Unauthorized");
 
@@ -406,13 +424,13 @@ export default async function EditPresenterPage({
     const bitrateRaw = formData.get("bitrate");
     const isActive   = formData.get("isActive") === "on";
 
-    if (!radioId)   throw new Error("معرّف الإذاعة مطلوب.");
-    if (!radioName) throw new Error("اسم الإذاعة مطلوب.");
-    if (!host)      throw new Error("الخادم (Host) مطلوب.");
-    if (!djUser)    throw new Error("اسم مستخدم DJ مطلوب.");
+    if (!radioId)   throw new Error(t("errorRadioIdRequired"));
+    if (!radioName) throw new Error(t("errorRadioNameRequired"));
+    if (!host)      throw new Error(t("errorHostRequired"));
+    if (!djUser)    throw new Error(t("errorDjUserRequired"));
 
     const port = parseInt(String(portRaw), 10);
-    if (isNaN(port) || port < 1 || port > 65535) throw new Error("المنفذ (Port) يجب أن يكون بين 1 و 65535.");
+    if (isNaN(port) || port < 1 || port > 65535) throw new Error(t("errorPortInvalid"));
     const bitrate = parseInt(String(bitrateRaw), 10) || 128;
 
     // Ownership: radio must belong to the presenter being edited
@@ -420,7 +438,7 @@ export default async function EditPresenterPage({
       where:  { id: radioId, presenterId },
       select: { id: true, encryptedPassword: true },
     });
-    if (!existing) throw new Error("الإذاعة غير موجودة أو ليست ملك هذا المذيع.");
+    if (!existing) throw new Error(t("errorRadioNotOwned"));
 
     // Keep old password if none supplied
     let encryptedPassword = existing.encryptedPassword;
@@ -443,21 +461,21 @@ export default async function EditPresenterPage({
   const { saved, pwError, stationError } = await searchParams;
 
   const pwErrorMessage = pwError === "empty"
-    ? "كلمة المرور الجديدة مطلوبة."
+    ? t("pwErrorEmpty")
     : pwError === "short"
-    ? "كلمة المرور يجب أن تكون 6 أحرف على الأقل."
+    ? t("pwErrorShort")
     : pwError === "mismatch"
-    ? "كلمة المرور وتأكيدها غير متطابقتين."
+    ? t("pwErrorMismatch")
     : null;
 
   const stationErrorMessage = stationError === "programs"
-    ? "لا يمكن إزالة المحطة لأن المذيع لديه برامج مرتبطة بها. احذف البرامج أولاً."
+    ? t("stationErrorPrograms")
     : stationError === "empty"
-    ? "يجب اختيار محطة واحدة على الأقل."
+    ? t("stationErrorEmpty")
     : null;
 
   return (
-    <div dir="rtl" className="min-h-screen bg-neutral-950 text-neutral-100 p-8 font-sans">
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 p-8 font-sans">
       <div className="max-w-2xl mx-auto">
         <div className="mb-8 flex items-center gap-4">
           <Link href="/admin/presenters" className="p-2 bg-neutral-900 hover:bg-neutral-800 rounded-lg transition-colors border border-neutral-800">
@@ -466,14 +484,12 @@ export default async function EditPresenterPage({
               <path d="m12 5 7 7-7 7"></path>
             </svg>
           </Link>
-          <h1 className="text-3xl font-bold bg-gradient-to-l from-indigo-400 to-cyan-400 bg-clip-text text-transparent">
-            تعديل المذيع
-          </h1>
+          <h1 className="text-3xl font-bold bg-gradient-to-l from-indigo-400 to-cyan-400 bg-clip-text text-transparent">{t("editPresenter")}</h1>
           <Link
             href={`/admin/presenters/${presenterId}/delete`}
             className="mr-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-400 bg-red-950/40 border border-red-800/40 hover:bg-red-900/50 hover:border-red-700/50 rounded-lg transition-colors"
           >
-            🗑️ إدارة الحذف
+            🗑️ {t("manageDelete")}
           </Link>
         </div>
 
@@ -484,35 +500,33 @@ export default async function EditPresenterPage({
         —————————————————————————————————————————————————————————————————— */}
         {saved === "presenter" && (
           <div className="flex items-center gap-2.5 bg-emerald-500/10 border border-emerald-500/25 rounded-xl px-5 py-3.5 text-emerald-400 text-sm mb-2">
-            <span className="text-base">✅</span>
-            تم حفظ بيانات المذيع وجدول البث بنجاح.
-          </div>
+            <span className="text-base">✅</span>{t("savedPresenter")}</div>
         )}
 
         <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 md:p-8 shadow-xl">
           <form action={updatePresenter} className="space-y-6">
             
             <div className="space-y-2">
-              <label htmlFor="name" className="text-sm font-medium text-neutral-300">الاسم</label>
+              <label htmlFor="name" className="text-sm font-medium text-neutral-300">{t("name")}</label>
               <input
                 id="name"
                 name="name"
                 type="text"
                 defaultValue={presenter.name || ""}
-                placeholder="اسم المذيع"
+                placeholder={t("presenterName")}
                 className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-neutral-100 placeholder:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
               />
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="username" className="text-sm font-medium text-neutral-300">اسم المستخدم <span className="text-red-500">*</span></label>
+              <label htmlFor="username" className="text-sm font-medium text-neutral-300">{t("username")}<span className="text-red-500">*</span></label>
               <input
                 id="username"
                 name="username"
                 type="text"
                 required
                 defaultValue={presenter.username}
-                placeholder="اسم المستخدم للدخول"
+                placeholder={t("usernameForLogin")}
                 className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-neutral-100 placeholder:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-mono text-left"
                 dir="ltr"
               />
@@ -520,7 +534,7 @@ export default async function EditPresenterPage({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label htmlFor="email" className="text-sm font-medium text-neutral-300">البريد الإلكتروني</label>
+                <label htmlFor="email" className="text-sm font-medium text-neutral-300">{t("email")}</label>
                 <input
                   id="email"
                   name="email"
@@ -532,7 +546,7 @@ export default async function EditPresenterPage({
                 />
               </div>
               <div className="space-y-2">
-                <label htmlFor="phone" className="text-sm font-medium text-neutral-300">رقم الهاتف</label>
+                <label htmlFor="phone" className="text-sm font-medium text-neutral-300">{t("phone")}</label>
                 <input
                   id="phone"
                   name="phone"
@@ -547,10 +561,8 @@ export default async function EditPresenterPage({
 
             {/* ══ Presenter Mode ══ */}
             <div className="pt-4 border-t border-neutral-800">
-              <h2 className="text-base font-semibold text-neutral-200 mb-1">نوع الحساب</h2>
-              <p className="text-xs text-neutral-500 mb-3 leading-relaxed">
-                نوع الحساب يحدد سلوك الاستوديو وبيانات الاعتماد. لا يمكن تغيير النوع بعد الإنشاء من هذه الصفحة — تواصل مع مطور النظام إذا احتجت لتحويل النوع.
-              </p>
+              <h2 className="text-base font-semibold text-neutral-200 mb-1">{t("accountType")}</h2>
+              <p className="text-xs text-neutral-500 mb-3 leading-relaxed">{t("accountTypeCannotChangeEdit")}</p>
               {/* Hidden input preserves current mode — displayed as badge only */}
               <input type="hidden" name="presenterMode" value={presenter.presenterMode} />
               <div className={`inline-flex items-center gap-2.5 px-4 py-3 rounded-xl border ${
@@ -567,16 +579,16 @@ export default async function EditPresenterPage({
                 </span>
                 <div>
                   <div className="font-semibold text-sm">
-                    {presenter.presenterMode === "DIRECT_DJ" ? "DJ مباشر"
-                      : presenter.presenterMode === "MULTI_STATION" ? "مذيع متعدد المحطات"
-                      : "مذيع محطة واحدة"}
+                    {presenter.presenterMode === "DIRECT_DJ" ? t("directDj")
+                      : presenter.presenterMode === "MULTI_STATION" ? t("multiStationLabel")
+                      : t("singleStationLabel")}
                   </div>
                   <div className="text-xs opacity-70 mt-0.5">
                     {presenter.presenterMode === "DIRECT_DJ"
-                      ? "يتجاوز جدول البرامج — يتصل مباشرة بإذاعاته الشخصية"
+                      ? t("directDjBadge")
                       : presenter.presenterMode === "MULTI_STATION"
-                      ? "يستخدم جدول البرامج — يمكن ربطه بأكثر من محطة"
-                      : "يستخدم جدول البرامج — مرتبط بمحطة واحدة فقط"}
+                      ? t("multiStationBadge")
+                      : t("singleStationBadge")}
                   </div>
                 </div>
               </div>
@@ -586,7 +598,7 @@ export default async function EditPresenterPage({
             <div className="pt-4 border-t border-neutral-800">
               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-3">
                 <div>
-                  <h2 className="text-base font-semibold text-neutral-200">صلاحية الحساب والاشتراك</h2>
+                  <h2 className="text-base font-semibold text-neutral-200">{t("validityAndSubscription")}</h2>
                 </div>
               {/* Programs management link — only for station-based types */}
               {presenter.presenterMode !== 'DIRECT_DJ' && (
@@ -594,28 +606,24 @@ export default async function EditPresenterPage({
                   href={`/admin/programs?presenterId=${presenter.id}`}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-purple-300 bg-purple-500/10 border border-purple-500/20 hover:bg-purple-500/20 rounded-lg transition-colors whitespace-nowrap"
                 >
-                  <span>📺</span>
-                  إدارة برامج هذا المذيع
-                </Link>
+                  <span>📺</span>{t("managePrograms")}</Link>
               )}
               </div>
 
               {/* Helper text */}
               {presenter.presenterMode !== 'DIRECT_DJ' ? (
                 <p className="text-xs text-neutral-500 mb-4 leading-relaxed">
-                  هذه الصلاحية تحدد ما إذا كان حساب المذيع فعالاً ويمكنه استخدام المنصة.
-                  مواعيد البرامج والبث تُدار من{" "}
-                  <Link href="/admin/programs" className="text-purple-400 hover:text-purple-300 underline underline-offset-2 transition-colors">صفحة إدارة البرامج</Link>.
+                  {t("presenterActiveHint1")}
+                  {t("presenterActiveHint2")}{" "}
+                  <Link href="/admin/programs" className="text-purple-400 hover:text-purple-300 underline underline-offset-2 transition-colors">{t("programsPage")}</Link>.
                 </p>
               ) : (
-                <p className="text-xs text-neutral-500 mb-4 leading-relaxed">
-                  صلاحية الحساب تتحكم في إمكانية تسجيل الدخول واستخدام المنصة فقط.
-                </p>
+                <p className="text-xs text-neutral-500 mb-4 leading-relaxed">{t("validityDirectDjDesc")}</p>
               )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div className="space-y-2">
-                  <label htmlFor="validFrom" className="text-sm font-medium text-neutral-400">تاريخ بداية صلاحية الحساب</label>
+                  <label htmlFor="validFrom" className="text-sm font-medium text-neutral-400">{t("validFromLabel")}</label>
                   <input
                     id="validFrom"
                     name="validFrom"
@@ -626,7 +634,7 @@ export default async function EditPresenterPage({
                   />
                 </div>
                 <div className="space-y-2">
-                  <label htmlFor="validTo" className="text-sm font-medium text-neutral-400">تاريخ نهاية صلاحية الحساب</label>
+                  <label htmlFor="validTo" className="text-sm font-medium text-neutral-400">{t("validToLabel")}</label>
                   <input
                     id="validTo"
                     name="validTo"
@@ -647,8 +655,8 @@ export default async function EditPresenterPage({
                     className="w-5 h-5 rounded border-neutral-700 text-indigo-500 focus:ring-indigo-500/50 bg-neutral-900"
                   />
                   <div className="flex flex-col">
-                    <span className="font-medium text-neutral-200">الحساب نشط</span>
-                    <span className="text-xs text-neutral-500">يسمح للمذيع بتسجيل الدخول واستخدام المنصة</span>
+                    <span className="font-medium text-neutral-200">{t("accountActive")}</span>
+                    <span className="text-xs text-neutral-500">{t("accountActiveDesc")}</span>
                   </div>
                 </label>
 
@@ -661,8 +669,8 @@ export default async function EditPresenterPage({
                     className="w-5 h-5 rounded border-neutral-700 text-indigo-500 focus:ring-indigo-500/50 bg-neutral-900"
                   />
                   <div className="flex flex-col">
-                    <span className="font-medium text-neutral-200">مسموح له بالبث</span>
-                    <span className="text-xs text-neutral-500">يسمح للمذيع بالبث عندما توجد حلقة برنامج منتظمة</span>
+                    <span className="font-medium text-neutral-200">{t("broadcastPermission")}</span>
+                    <span className="text-xs text-neutral-500">{t("broadcastPermissionDesc")}</span>
                   </div>
                 </label>
                 ) : (
@@ -700,9 +708,7 @@ export default async function EditPresenterPage({
               <button
                 type="submit"
                 className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl px-4 py-3 transition-all shadow-lg shadow-indigo-500/20"
-              >
-                حفظ التعديلات
-              </button>
+              >{t("saveChanges")}</button>
             </div>
           </form>
         </div>
@@ -718,16 +724,14 @@ export default async function EditPresenterPage({
           {/* ── SINGLE_STATION: read-only card ─── */}
           {presenter.presenterMode === 'SINGLE_STATION' && (
             <>
-              <h2 className="text-lg font-semibold text-neutral-200 mb-1">المحطة المرتبطة بالمذيع</h2>
+              <h2 className="text-lg font-semibold text-neutral-200 mb-1">{t("linkedStation")}</h2>
               <div className="flex items-start gap-2 bg-neutral-800/50 border border-neutral-700 rounded-xl px-4 py-3 mb-4">
                 <span className="text-amber-400 mt-0.5">🔒</span>
-                <p className="text-xs text-neutral-400 leading-relaxed">
-                  هذا الحساب مرتبط بمحطة واحدة ولا يمكن تغييرها من هذه الصفحة. تواصل مع مطور النظام إذا احتجت لتحويل المحطة.
-                </p>
+                <p className="text-xs text-neutral-400 leading-relaxed">{t("singleStationLocked")}</p>
               </div>
               {presenterAssignedStations.length === 0 ? (
                 <div className="text-sm text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3">
-                  ⚠️ لم يتم تعيين محطة بعد. استخدم صفحة إضافة مذيع جديد لتعيين محطة أو تواصل مع المطور.
+                  ⚠️ {t("singleStationLocked")}
                 </div>
               ) : (
                 presenterAssignedStations.map((s) => (
@@ -746,8 +750,8 @@ export default async function EditPresenterPage({
           {/* ── MULTI_STATION: editable checkbox list ─── */}
           {presenter.presenterMode === 'MULTI_STATION' && (
             <>
-              <h2 className="text-lg font-semibold text-neutral-200 mb-1">المحطات المرتبطة بالمذيع</h2>
-              <p className="text-xs text-neutral-500 mb-4">اختر المحطات التي يُسمح لهذا المذيع ببثها. لا يمكن إزالة محطة لديها برامج مرتبطة بهذا المذيع.</p>
+              <h2 className="text-lg font-semibold text-neutral-200 mb-1">{t("linkedStations")}</h2>
+              <p className="text-xs text-neutral-500 mb-4">{t("multiStationEditHint")}</p>
 
               {/* Error banner */}
               {stationErrorMessage && (
@@ -760,15 +764,13 @@ export default async function EditPresenterPage({
               {/* Success banner */}
               {saved === "stations" && (
                 <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/25 rounded-xl px-4 py-3 text-emerald-400 text-sm mb-5">
-                  <span>✅</span>
-                  تم حفظ محطات المذيع بنجاح.
-                </div>
+                  <span>✅</span>{t("stationsSaved")}</div>
               )}
 
               {allStations.length === 0 ? (
                 <p className="text-sm text-neutral-500">
-                  لا توجد محطات نشطة بعد.{" "}
-                  <a href="/admin/stations" className="text-indigo-400 hover:underline">أضف محطة أولاً.</a>
+                  {t("noActiveStationsYet")}{" "}
+                  <a href="/admin/stations" className="text-indigo-400 hover:underline">{t("addStationFirst")}</a>
                 </p>
               ) : (
                 <form action={updatePresenterStations} className="space-y-5">
@@ -801,9 +803,7 @@ export default async function EditPresenterPage({
                     <button
                       type="submit"
                       className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl px-4 py-3 transition-all shadow-lg shadow-indigo-500/20 text-sm"
-                    >
-                      حفظ محطات المذيع
-                    </button>
+                    >{t("savePresenterStations")}</button>
                   </div>
                 </form>
               )}
@@ -821,18 +821,14 @@ export default async function EditPresenterPage({
         >
           <div className="flex items-center gap-3 mb-1">
             <span className="text-lg">🔑</span>
-            <h2 className="text-lg font-semibold text-neutral-200">تغيير كلمة مرور المذيع</h2>
+            <h2 className="text-lg font-semibold text-neutral-200">{t("changePassword")}</h2>
           </div>
-          <p className="text-xs text-neutral-500 mb-5">
-            أدخل كلمة مرور جديدة لهذا المذيع. لن يتأثر أي حقل آخر.
-          </p>
+          <p className="text-xs text-neutral-500 mb-5">{t("changePasswordDesc")}</p>
 
           {/* Inline success banner */}
           {saved === "password" && (
             <div className="flex items-center gap-2.5 bg-emerald-500/10 border border-emerald-500/25 rounded-xl px-5 py-3.5 text-emerald-400 text-sm mb-5">
-              <span className="text-base">✅</span>
-              تم تغيير كلمة مرور المذيع بنجاح.
-            </div>
+              <span className="text-base">✅</span>{t("passwordChanged")}</div>
           )}
 
           {/* Inline error banner */}
@@ -845,8 +841,7 @@ export default async function EditPresenterPage({
 
           <form action={updatePresenterPassword} className="space-y-4">
             <div className="space-y-2">
-              <label htmlFor="newPassword" className="text-sm font-medium text-neutral-300">
-                كلمة المرور الجديدة <span className="text-red-500">*</span>
+              <label htmlFor="newPassword" className="text-sm font-medium text-neutral-300">{t("newPassword")}<span className="text-red-500">*</span>
               </label>
               <input
                 id="newPassword"
@@ -855,15 +850,14 @@ export default async function EditPresenterPage({
                 required
                 minLength={6}
                 autoComplete="new-password"
-                placeholder="6 أحرف على الأقل"
+                placeholder={t("minChars")}
                 className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-neutral-100 placeholder:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-mono"
                 dir="ltr"
               />
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="confirmPassword" className="text-sm font-medium text-neutral-300">
-                تأكيد كلمة المرور <span className="text-red-500">*</span>
+              <label htmlFor="confirmPassword" className="text-sm font-medium text-neutral-300">{t("confirmPassword")}<span className="text-red-500">*</span>
               </label>
               <input
                 id="confirmPassword"
@@ -872,7 +866,7 @@ export default async function EditPresenterPage({
                 required
                 minLength={6}
                 autoComplete="new-password"
-                placeholder="أعد كتابة كلمة المرور"
+                placeholder={t("retypePassword")}
                 className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3 text-neutral-100 placeholder:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all font-mono"
                 dir="ltr"
               />
@@ -883,7 +877,7 @@ export default async function EditPresenterPage({
                 type="submit"
                 className="w-full bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-xl px-4 py-3 transition-all shadow-lg shadow-amber-500/20 text-sm"
               >
-                تغيير كلمة المرور
+                {tc("changePassword")}
               </button>
             </div>
           </form>
@@ -896,31 +890,27 @@ export default async function EditPresenterPage({
           {/* Saved banner */}
           {saved === "djradio" && (
             <div className="flex items-center gap-2.5 bg-emerald-500/10 border border-emerald-500/25 rounded-xl px-5 py-3.5 text-emerald-400 text-sm mb-6">
-              <span className="text-base">✅</span>
-              تم حفظ إذاعة DJ المباشر بنجاح.
-            </div>
+              <span className="text-base">✅</span>{t("djRadioSaved")}</div>
           )}
 
           {/* Section header */}
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-base">🎙️</div>
-              <h2 className="text-base font-semibold text-neutral-200">إذاعات DJ المباشر</h2>
+              <h2 className="text-base font-semibold text-neutral-200">{t("djRadios")}</h2>
             </div>
             <span className="px-2.5 py-1 rounded-lg text-xs font-medium border bg-amber-500/10 text-amber-400 border-amber-500/20">
-              {presenter.directDjRadios.length} إذاعة
+              {t("radioCount", { count: presenter.directDjRadios.length })}
             </span>
           </div>
-          <p className="text-xs text-neutral-500 mb-6 mr-11">
-            هذه الإذاعات خاصة بهذا المذيع فقط، ويختار منها عند دخول الاستوديو.
-          </p>
+          <p className="text-xs text-neutral-500 mb-6 mr-11">{t("djRadiosDesc")}</p>
 
           {/* Existing radios list */}
           {presenter.directDjRadios.length === 0 ? (
             <div className="text-center py-8 border border-dashed border-neutral-800 rounded-xl mb-5">
               <div className="text-2xl mb-2">📡</div>
-              <p className="text-sm text-neutral-500">لا توجد إذاعات مضافة بعد.</p>
-              <p className="text-xs text-neutral-600 mt-1">أضف إذاعة أدناه لتفعيل بث DJ المباشر.</p>
+              <p className="text-sm text-neutral-500">{t("noDjRadios")}</p>
+              <p className="text-xs text-neutral-600 mt-1">{t("addDjRadioHint")}</p>
             </div>
           ) : (
             <div className="space-y-2.5 mb-5">
@@ -938,7 +928,7 @@ export default async function EditPresenterPage({
                           r.isActive
                             ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                             : 'bg-neutral-700/30 text-neutral-500 border-neutral-700/30'
-                        }`}>{r.isActive ? 'نشط' : 'معطل'}</span>
+                        }`}>{r.isActive ? tc("active") : tc("inactive")}</span>
                         <span className="text-[10px] text-neutral-500 bg-neutral-800/50 px-1.5 py-px rounded border border-neutral-700/30 font-mono" dir="ltr">
                           {r.bitrate}kbps
                         </span>
@@ -957,29 +947,29 @@ export default async function EditPresenterPage({
                           r.isActive
                             ? 'text-neutral-400 border-neutral-700 hover:bg-neutral-800 hover:text-neutral-300'
                             : 'text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10'
-                        }`}>{r.isActive ? '⏸ تعطيل' : '▶ تفعيل'}</button>
+                        }`}>{r.isActive ? `⏸ ${tc("disable")}` : `▶ ${tc("enable")}`}</button>
                       </form>
                       {/* Delete */}
                       <form action={deleteDirectDjRadio}>
                         <input type="hidden" name="radioId" value={r.id} />
                         <ConfirmSubmitButton
-                          message={`حذف إذاعة "${r.radioName}"؟ لا يمكن التراجع.`}
+                          message={t("deleteRadioConfirm", { name: r.radioName })}
                           className="px-2.5 py-1 text-[11px] font-medium rounded-lg border border-red-500/20 text-red-400 hover:bg-red-500/10 hover:border-red-500/40 transition-all"
-                        >✕ حذف</ConfirmSubmitButton>
+                        >{t("deleteRadio")}</ConfirmSubmitButton>
                       </form>
                       {/* Expand indicator */}
-                      <span className="text-[11px] text-indigo-400 border border-indigo-500/20 px-2.5 py-1 rounded-lg bg-indigo-500/5 hover:bg-indigo-500/10 transition-colors whitespace-nowrap">✏️ تعديل</span>
+                      <span className="text-[11px] text-indigo-400 border border-indigo-500/20 px-2.5 py-1 rounded-lg bg-indigo-500/5 hover:bg-indigo-500/10 transition-colors whitespace-nowrap">{t("editRadio")}</span>
                     </div>
                   </summary>
 
                   {/* Inline edit form */}
                   <div className="px-4 pt-4 pb-5 border-t border-neutral-800 bg-neutral-950/40">
-                    <p className="text-xs font-semibold text-indigo-400 mb-3 flex items-center gap-1.5"><span>✏️</span> تعديل بيانات الإذاعة</p>
+                    <p className="text-xs font-semibold text-indigo-400 mb-3 flex items-center gap-1.5"><span>✏️</span>{t("editRadioData")}</p>
                     <form action={updateDirectDjRadio} className="space-y-3">
                       <input type="hidden" name="radioId" value={r.id} />
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="sm:col-span-2 space-y-1">
-                          <label className="text-xs font-medium text-neutral-400">اسم الإذاعة <span className="text-red-400">*</span></label>
+                          <label className="text-xs font-medium text-neutral-400">{t("radioName")}<span className="text-red-400">*</span></label>
                           <input name="radioName" type="text" required defaultValue={r.radioName}
                             className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500/60 transition-all" />
                         </div>
@@ -999,10 +989,10 @@ export default async function EditPresenterPage({
                             className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500/60 transition-all" dir="ltr" />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-xs font-medium text-neutral-400">كلمة المرور</label>
+                          <label className="text-xs font-medium text-neutral-400">{t("password")}</label>
                           <input name="djPassword" type="password" autoComplete="new-password" placeholder="••••••••"
                             className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500/60 transition-all" dir="ltr" />
-                          <p className="text-[10px] text-neutral-600">اترك كلمة المرور فارغة للاحتفاظ بالكلمة الحالية.</p>
+                          <p className="text-[10px] text-neutral-600">{t("keepCurrentPassword")}</p>
                         </div>
                         <div className="space-y-1">
                           <label className="text-xs font-medium text-neutral-400">Mount</label>
@@ -1022,14 +1012,12 @@ export default async function EditPresenterPage({
                         <div className="flex items-center gap-2 sm:col-span-2">
                           <input name="isActive" id={`edit-isActive-${r.id}`} type="checkbox" defaultChecked={r.isActive}
                             className="w-4 h-4 rounded border-neutral-700 accent-indigo-500" />
-                          <label htmlFor={`edit-isActive-${r.id}`} className="text-sm text-neutral-300">نشط</label>
+                          <label htmlFor={`edit-isActive-${r.id}`} className="text-sm text-neutral-300">{t("isActive")}</label>
                         </div>
                       </div>
                       <div className="flex justify-end pt-1">
                         <button type="submit"
-                          className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow-lg shadow-indigo-500/20 transition-all">
-                          💾 حفظ التعديلات
-                        </button>
+                          className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg shadow-lg shadow-indigo-500/20 transition-all">{t("saveRadioChanges")}</button>
                       </div>
                     </form>
                   </div>
@@ -1043,16 +1031,16 @@ export default async function EditPresenterPage({
             <summary className="list-none cursor-pointer">
               <div className="flex items-center gap-2 w-fit px-4 py-2 rounded-xl border border-dashed border-neutral-700 text-neutral-400 hover:text-neutral-200 hover:border-neutral-600 hover:bg-neutral-800/40 transition-all text-sm font-medium select-none">
                 <span className="text-base leading-none">＋</span>
-                <span>إضافة إذاعة جديدة</span>
+                <span>{t("addNewRadio")}</span>
               </div>
             </summary>
             <div className="mt-4 rounded-xl border border-neutral-700/60 bg-neutral-950/40 p-5">
-              <p className="text-xs font-semibold text-neutral-300 mb-4 flex items-center gap-1.5"><span>📡</span> بيانات الإذاعة الجديدة</p>
+              <p className="text-xs font-semibold text-neutral-300 mb-4 flex items-center gap-1.5"><span>📡</span>{t("newRadioData")}</p>
               <form action={createDirectDjRadio} className="space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="sm:col-span-2 space-y-1">
-                    <label className="text-xs font-medium text-neutral-400">اسم الإذاعة <span className="text-red-400">*</span></label>
-                    <input name="radioName" type="text" required placeholder="مثال: إذاعة النور"
+                    <label className="text-xs font-medium text-neutral-400">{t("radioName")}<span className="text-red-400">*</span></label>
+                    <input name="radioName" type="text" required placeholder={t("radioNamePlaceholder")}
                       className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500/60 transition-all" />
                   </div>
                   <div className="space-y-1">
@@ -1071,7 +1059,7 @@ export default async function EditPresenterPage({
                       className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500/60 transition-all" dir="ltr" />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-neutral-400">كلمة المرور <span className="text-red-400">*</span></label>
+                    <label className="text-xs font-medium text-neutral-400">{t("password")}<span className="text-red-400">*</span></label>
                     <input name="djPassword" type="password" required autoComplete="new-password"
                       className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-neutral-100 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500/60 transition-all" dir="ltr" />
                   </div>
@@ -1093,13 +1081,13 @@ export default async function EditPresenterPage({
                   <div className="flex items-center gap-2 sm:col-span-2">
                     <input name="isActive" id="djr-isActive" type="checkbox" defaultChecked
                       className="w-4 h-4 rounded border-neutral-700 accent-amber-500" />
-                    <label htmlFor="djr-isActive" className="text-sm text-neutral-300">تفعيل الإذاعة فوراً</label>
+                    <label htmlFor="djr-isActive" className="text-sm text-neutral-300">{t("activateRadio")}</label>
                   </div>
                 </div>
                 <div className="flex justify-end pt-1">
                   <button type="submit"
                     className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium rounded-lg shadow-lg shadow-amber-500/20 transition-all">
-                    📡 إضافة الإذاعة
+                    📡 {t("addRadio")}
                   </button>
                 </div>
               </form>

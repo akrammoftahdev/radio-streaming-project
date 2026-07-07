@@ -3,7 +3,7 @@
 # EGONAIR — Group 5.2 Transfer + VPS Setup
 #
 # Run this from your LOCAL Mac in the project root:
-#   ./deploy/03-transfer-and-setup.sh egyona YOUR_VPS_IP_OR_HOST
+#   ./deploy/03-transfer-and-setup.sh root YOUR_VPS_IP_OR_HOST
 #
 # What it does:
 #   1. Creates a timestamped release folder on the VPS
@@ -19,13 +19,13 @@
 # ============================================================
 set -euo pipefail
 
-VPS_USER="${1:-egyona}"
+VPS_USER="${1:-root}"
 VPS_HOST="${2:-}"
 
 if [ -z "$VPS_HOST" ]; then
   echo "❌  Usage: $0 <vps-user> <vps-host>"
-  echo "    Example: $0 egyona 1.2.3.4"
-  echo "    Example: $0 egyona egonair.com"
+  echo "    Example: $0 root 1.2.3.4"
+  echo "    Example: $0 root egonair.com"
   exit 1
 fi
 
@@ -61,7 +61,6 @@ rsync -avz --progress \
   --exclude='.env' \
   --exclude='.env.local' \
   --exclude='.env.production' \
-  --exclude='dev.db' \
   --exclude='*.webm' \
   --exclude='.DS_Store' \
   --exclude='tsconfig.tsbuildinfo' \

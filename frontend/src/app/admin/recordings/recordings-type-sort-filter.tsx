@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
 import { SegmentedFilter } from "@/components/ui/SegmentedFilter";
+import { useTranslations } from "next-intl";
 
 export function AdminRecordingsTypeSortFilter({
   initialPresenterMode,
@@ -17,6 +18,7 @@ export function AdminRecordingsTypeSortFilter({
 }) {
   const router          = useRouter();
   const searchParamsUrl = useSearchParams();
+  const t = useTranslations("admin.recordings");
 
   const [presenterMode, setPresenterMode] = useState(initialPresenterMode || "all");
   const [fileType,      setFileType]      = useState(initialFileType      || "all");
@@ -54,14 +56,14 @@ export function AdminRecordingsTypeSortFilter({
 
         {/* Presenter type — fixed-value, mutually exclusive */}
         <div className="flex flex-col">
-          <label className="block text-xs font-semibold text-neutral-400 mb-2 uppercase tracking-wider">نوع المذيع</label>
+          <label className="block text-xs font-semibold text-neutral-400 mb-2 uppercase tracking-wider">{t("presenterType")}</label>
           <SegmentedFilter
             value={presenterMode}
             options={[
-              { value: "all",            label: "الكل"           },
-              { value: "SINGLE_STATION", label: "محطة واحدة"     },
-              { value: "MULTI_STATION",  label: "متعدد المحطات" },
-              { value: "DIRECT_DJ",      label: "DJ مباشر"       },
+              { value: "all",            label: t("all")           },
+              { value: "SINGLE_STATION", label: t("typeSingle")     },
+              { value: "MULTI_STATION",  label: t("typeMulti") },
+              { value: "DIRECT_DJ",      label: t("typeDj")       },
             ]}
             onChange={(v) => { setPresenterMode(v); apply({ newPresenterMode: v }); }}
           />
@@ -69,13 +71,13 @@ export function AdminRecordingsTypeSortFilter({
 
         {/* File type — fixed-value, mutually exclusive */}
         <div className="flex flex-col">
-          <label className="block text-xs font-semibold text-neutral-400 mb-2 uppercase tracking-wider">نوع الملف</label>
+          <label className="block text-xs font-semibold text-neutral-400 mb-2 uppercase tracking-wider">{t("fileType")}</label>
           <SegmentedFilter
             value={fileType}
             options={[
-              { value: "all",        label: "الكل" },
-              { value: "audio/mpeg", label: "MP3"  },
-              { value: "audio/webm", label: "WebM" },
+              { value: "all",        label: t("all") },
+              { value: "audio/mpeg", label: t("fileMp3")  },
+              { value: "audio/webm", label: t("fileWebm") },
             ]}
             onChange={(v) => { setFileType(v); apply({ newFileType: v }); }}
           />
@@ -83,16 +85,16 @@ export function AdminRecordingsTypeSortFilter({
 
         {/* Sort — mutually exclusive */}
         <div className="flex flex-col">
-          <label className="block text-xs font-semibold text-neutral-400 mb-2 uppercase tracking-wider">ترتيب</label>
+          <label className="block text-xs font-semibold text-neutral-400 mb-2 uppercase tracking-wider">{t("sortLabel")}</label>
           <SegmentedFilter
             value={sort}
             options={[
-              { value: "newest",        label: "الأحدث" },
-              { value: "oldest",        label: "الأقدم" },
-              { value: "duration-high", label: "المدة ↓" },
-              { value: "duration-low",  label: "المدة ↑" },
-              { value: "size-high",     label: "الحجم ↓" },
-              { value: "size-low",      label: "الحجم ↑" },
+              { value: "newest",        label: t("sortNewest") },
+              { value: "oldest",        label: t("sortOldest") },
+              { value: "duration-high", label: t("sortDurHigh") },
+              { value: "duration-low",  label: t("sortDurLow") },
+              { value: "size-high",     label: t("sortSizeHigh") },
+              { value: "size-low",      label: t("sortSizeLow") },
             ]}
             onChange={(v) => { setSort(v); apply({ newSort: v }); }}
           />

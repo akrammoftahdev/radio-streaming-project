@@ -2466,9 +2466,10 @@ function getFlagEmoji(countryCode: string | null) {
 
         // 3. WebSocket
         let wsBase = process.env.NEXT_PUBLIC_WS_URL;
-        if (!wsBase || wsBase.includes("localhost") || wsBase.includes("4001")) {
+        if (!wsBase || wsBase.includes("run.app") || wsBase.includes("localhost") || wsBase.includes("4001")) {
           if (typeof window !== "undefined" && window.location.hostname !== "localhost") {
-            wsBase = "wss://egonair-backend-audio-729286791857.europe-west1.run.app/audio";
+            const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+            wsBase = `${protocol}//${window.location.host}/audio`;
           } else {
             wsBase = "ws://localhost:4001/audio";
           }
@@ -3635,7 +3636,7 @@ function getFlagEmoji(countryCode: string | null) {
                   </div>
                 ) : (
                   liveMessages.map((msg) => (
-                    <div key={msg.id} className="bg-neutral-900/60 border border-neutral-800 rounded-lg p-2 flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <div key={msg.id} className="bg-neutral-900/60 border border-neutral-800 rounded-lg p-1.5 flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
                       <div className="flex items-start justify-between gap-2">
                         <div className="font-semibold text-sm text-neutral-200 truncate">{msg.name || msg.senderName}</div>
                         <div className="text-[10px] text-neutral-500 whitespace-nowrap">

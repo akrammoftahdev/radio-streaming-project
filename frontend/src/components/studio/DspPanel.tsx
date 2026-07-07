@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { type DspParams, DEFAULT_DSP_PARAMS, DSP_PARAM_META, DSP_GROUPS, DSP_GROUP_ENABLE_KEY } from "@/lib/dsp-presets";
+import { useTranslations } from 'next-intl';
 
 type PresetInfo = { id: string; name: string; isSystem: boolean; params: DspParams };
 
@@ -25,6 +26,7 @@ export default function DspPanel({
   onBypassToggle,
   isMicOpen,
 }: DspPanelProps) {
+  const t = useTranslations('studio.dsp');
   const [presets, setPresets]         = useState<PresetInfo[]>([]);
   const [activePresetId, setActivePresetId] = useState<string | null>(null);
   const [loading, setLoading]        = useState(true);
@@ -65,7 +67,7 @@ export default function DspPanel({
 
   // Save current settings as new preset
   const handleSave = async () => {
-    if (!saveName.trim()) { setError("أدخل اسم الإعداد"); return; }
+    if (!saveName.trim()) { setError(t('enterPresetName')); return; }
     setSaving(true); setError("");
     try {
       const res = await fetch("/api/studio/dsp-presets", {
@@ -75,7 +77,7 @@ export default function DspPanel({
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || "فشل الحفظ");
+        throw new Error(err.error || t('saveFailed'));
       }
       const newPreset = await res.json();
       setPresets(prev => [...prev, newPreset]);
@@ -115,9 +117,9 @@ export default function DspPanel({
       <div className="px-4 py-3 border-b border-neutral-800 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-lg">🎛️</span>
-          <span className="text-sm font-semibold text-violet-400">معالجة صوت المايك (DSP)</span>
+          <span className="text-sm font-semibold text-violet-400">{t('panelTitle')}</span>
           {!isMicOpen && (
-            <span className="text-[10px] text-neutral-500 bg-neutral-800 px-1.5 py-0.5 rounded-full">المايك مغلق</span>
+            <span className="text-[10px] text-neutral-500 bg-neutral-800 px-1.5 py-0.5 rounded-full">{t('micClosed')}</span>
           )}
         </div>
         <button
@@ -128,7 +130,7 @@ export default function DspPanel({
               : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
           }`}
         >
-          {bypassed ? "⏸ تجاوز (مُعطّل)" : "✓ مُفعّل"}
+          {bypassed ? t('bypassed') : t('enabled')}
         </button>
       </div>
 
@@ -136,7 +138,7 @@ export default function DspPanel({
         {/* Preset selector */}
         <div className="px-4 py-3 border-b border-neutral-800/50">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-[10px] text-neutral-500 font-medium uppercase tracking-wider">الإعدادات المحفوظة</span>
+            <span className="text-[10px] text-neutral-500 font-medium uppercase tracking-wider">{t('savedPresets')}</span>
             {loading && <span className="w-3 h-3 border-2 border-violet-500/30 border-t-violet-400 rounded-full animate-spin" />}
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -150,13 +152,29 @@ export default function DspPanel({
                       : "bg-neutral-800 text-neutral-300 hover:bg-violet-500/10 hover:text-violet-300 border border-neutral-700"
                   }`}
                 >
-                  {p.isSystem ? "📦 " : "👤 "}{p.name}
+                  {p.isSystem ? "📦 " : "👤 "}
+                  {p.isSystem ? t((() => {
+                    const legacyMap: Record<string, string> = {
+                      "بدون معالجة": "presets.noProcessing",
+                      "صوت إذاعي FM": "presets.fmRadio",
+                      "صوت بودكاست": "presets.podcast",
+                      "صوت عميق (بيس)": "presets.deepBass",
+                      "صوت حاد وواضح": "presets.brightClear",
+                      "صوت دافئ (راديو كلاسيك)": "presets.warmClassic",
+                      "صوت تلفزيوني": "presets.tvBroadcast",
+                      "صوت مع ريفيرب خفيف": "presets.lightReverb",
+                      "صوت مع تأخير": "presets.echoDelay",
+                      "صوت تلاوة قرآن": "presets.quranRecitation",
+                    };
+                    // @ts-ignore - catch any mismatch safely
+                    return legacyMap[p.name] || p.name;
+                  })()) : p.name}
                 </button>
                 {!p.isSystem && (
                   <button
                     onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
                     className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 text-white text-[8px] rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                    title="حذف"
+                    title={t('deletePreset')}
                   >✕</button>
                 )}
               </div>
@@ -169,14 +187,14 @@ export default function DspPanel({
                 onClick={() => setShowSaveForm(true)}
                 className="text-[10px] text-violet-400 hover:text-violet-300 transition-colors"
               >
-                + حفظ الإعدادات الحالية كإعداد جديد
+                {t('saveCurrentAsNew')}
               </button>
             ) : (
               <div className="flex items-center gap-2">
                 <input
                   value={saveName}
                   onChange={e => setSaveName(e.target.value)}
-                  placeholder="اسم الإعداد الجديد..."
+                  placeholder={t('newPresetPlaceholder')}
                   className="flex-1 bg-neutral-800 border border-neutral-700 rounded-lg px-2.5 py-1.5 text-xs text-neutral-100 placeholder:text-neutral-600 focus:outline-none focus:ring-1 focus:ring-violet-500/40"
                   onKeyDown={e => e.key === 'Enter' && handleSave()}
                 />
@@ -185,12 +203,12 @@ export default function DspPanel({
                   disabled={saving}
                   className="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-medium rounded-lg disabled:opacity-50"
                 >
-                  {saving ? "..." : "حفظ"}
+                  {saving ? "..." : t('save')}
                 </button>
                 <button
                   onClick={() => { setShowSaveForm(false); setSaveName(""); setError(""); }}
                   className="text-xs text-neutral-500 hover:text-neutral-300"
-                >إلغاء</button>
+                >{t('cancel')}</button>
               </div>
             )}
             {error && <p className="text-[10px] text-red-400 mt-1">{error}</p>}
@@ -219,7 +237,7 @@ export default function DspPanel({
                   <div dir="ltr" className={`relative w-8 h-[18px] rounded-full transition-colors flex-shrink-0 ${isEnabled ? 'bg-violet-600' : 'bg-neutral-700'}`}>
                     <div className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow transition-[left] duration-200 ${isEnabled ? 'left-[16px]' : 'left-[2px]'}`} />
                   </div>
-                  <span className={`text-xs font-medium transition-colors ${isEnabled ? 'text-neutral-200' : 'text-neutral-500'}`}>{group.label}</span>
+                  <span className={`text-xs font-medium transition-colors ${isEnabled ? 'text-neutral-200' : 'text-neutral-500'}`}>{t(group.label)}</span>
                 </button>
                 {/* Expand/collapse chevron */}
                 <button
@@ -241,7 +259,7 @@ export default function DspPanel({
                     return (
                       <div key={paramKey} className="space-y-1">
                         <div className="flex items-center justify-between">
-                          <label className="text-[11px] text-neutral-400">{meta.label}</label>
+                          <label className="text-[11px] text-neutral-400">{t(meta.label)}</label>
                           <span className="text-[10px] text-neutral-500 tabular-nums font-mono">
                             {typeof value === 'number' ? (Number.isInteger(meta.step) || meta.step >= 1 ? Math.round(value) : value.toFixed(meta.step < 0.01 ? 3 : meta.step < 0.1 ? 2 : 1)) : value}
                             {meta.unit ? ` ${meta.unit}` : ""}
@@ -272,7 +290,7 @@ export default function DspPanel({
             onClick={() => { onParamsChange(DEFAULT_DSP_PARAMS); setActivePresetId(null); }}
             className="text-[10px] text-neutral-600 hover:text-neutral-400 transition-colors"
           >
-            ↩ إعادة تعيين لافتراضي
+            {t('resetToDefault')}
           </button>
         </div>
       </div>

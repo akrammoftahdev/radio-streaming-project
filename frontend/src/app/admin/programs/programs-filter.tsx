@@ -7,6 +7,7 @@ import { MultiSmartSelect }  from "@/components/ui/MultiSmartSelect";
 import { SegmentedFilter }   from "@/components/ui/SegmentedFilter";
 import { ClearFiltersButton } from "@/components/ui/ClearFiltersButton";
 import type { MultiSmartSelectOption } from "@/components/ui/MultiSmartSelect";
+import { useTranslations, useLocale } from "next-intl";
 
 export function AdminProgramsFilter({
   initialQ,
@@ -25,8 +26,11 @@ export function AdminProgramsFilter({
   allStations:         { id: string; name: string }[];
   pageSize:            number;
 }) {
+  const t = useTranslations("admin.programs.filter");
   const router = useRouter();
   const searchParamsUrl = useSearchParams();
+  const locale = useLocale();
+  const dir = locale === "ar" ? "rtl" : "ltr";
 
   const [q,           setQ]           = useState(initialQ);
   const [stationIds,  setStationIds]  = useState<string[]>(initialStationIds);
@@ -97,25 +101,22 @@ export function AdminProgramsFilter({
   }));
 
   return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 mb-6 shadow-xl">
+    <div dir={dir} className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 mb-6 shadow-xl">
       <div className="flex flex-col gap-5">
 
-        {/* Search */}
-        <div className="w-full">
-          <label className="block text-xs font-semibold text-neutral-400 mb-2 uppercase tracking-wider">بحث</label>
-          <SearchFilter
-            value={q}
-            onChange={setQ}
-            placeholder="ابحث باسم البرنامج، الوصف، أو المذيع..."
-          />
-        </div>
+        {/* Row 1: Search */}
+        <SearchFilter
+          value={q}
+          onChange={setQ}
+          placeholder={t("searchPlaceholder")}
+        />
 
-        {/* Filters grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
+        {/* Row 2: Filters grid */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
 
           {/* ── Station multi-select dropdown ── */}
-          <div className="flex flex-col">
-            <label className="block text-xs font-semibold text-neutral-400 mb-2 uppercase tracking-wider">المحطة</label>
+          <div className="flex flex-col gap-2">
+            <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">{t("stationLabel")}</label>
             <MultiSmartSelect
               options={stationOptions}
               values={stationIds}
@@ -123,47 +124,47 @@ export function AdminProgramsFilter({
                 setStationIds(ids);
                 apply({ newStationIds: ids });
               }}
-              placeholder="كل المحطات"
+              placeholder={t("allStations")}
             />
           </div>
 
           {/* Status */}
-          <div className="flex flex-col">
-            <label className="block text-xs font-semibold text-neutral-400 mb-2 uppercase tracking-wider">الحالة</label>
+          <div className="flex flex-col gap-2">
+            <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">{t("statusLabel")}</label>
             <SegmentedFilter
               value={status}
               options={[
-                { value: "all",      label: "الكل"   },
-                { value: "active",   label: "نشط"    },
-                { value: "inactive", label: "موقوف"  },
+                { value: "all",      label: t("all")   },
+                { value: "active",   label: t("active")    },
+                { value: "inactive", label: t("inactive")  },
               ]}
               onChange={(val) => { setStatus(val); apply({ newStatus: val }); }}
             />
           </div>
 
           {/* Sort */}
-          <div className="flex flex-col">
-            <label className="block text-xs font-semibold text-neutral-400 mb-2 uppercase tracking-wider">ترتيب</label>
+          <div className="flex flex-col gap-2">
+            <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">{t("sortLabel")}</label>
             <SegmentedFilter
               value={sort}
               options={[
-                { value: "newest", label: "الأحدث"   },
-                { value: "oldest", label: "الأقدم"   },
-                { value: "title",  label: "الاسم أ-ي" },
+                { value: "newest", label: t("newest")   },
+                { value: "oldest", label: t("oldest")   },
+                { value: "title",  label: t("nameAZ") },
               ]}
               onChange={(val) => { setSort(val); apply({ newSort: val }); }}
             />
           </div>
 
           {/* Has schedule */}
-          <div className="flex flex-col">
-            <label className="block text-xs font-semibold text-neutral-400 mb-2 uppercase tracking-wider">الجدول</label>
+          <div className="flex flex-col gap-2">
+            <label className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">{t("scheduleLabel")}</label>
             <SegmentedFilter
               value={hasSchedule}
               options={[
-                { value: "all",         label: "الكل"        },
-                { value: "hasSchedule", label: "له جدول"     },
-                { value: "noSchedule",  label: "بدون جدول"   },
+                { value: "all",         label: t("all")        },
+                { value: "hasSchedule", label: t("hasSchedule")     },
+                { value: "noSchedule",  label: t("noSchedule")   },
               ]}
               onChange={(val) => { setHasSchedule(val); apply({ newHasSchedule: val }); }}
             />
@@ -177,7 +178,7 @@ export function AdminProgramsFilter({
         <div className="flex justify-start mt-5 pt-4 border-t border-neutral-800">
           <ClearFiltersButton
             onClick={clearAll}
-            label="مسح كل الفلاتر"
+            label={t("clearAll")}
           />
         </div>
       )}

@@ -2418,7 +2418,9 @@
       "disableWarning": "Disabling this will hide the chat widget on the public website.",
       "studioToggle": "Listener Chat",
       "clear": "Clear",
-      "empty": "No messages at the moment"
+      "empty": "No messages at the moment",
+      "language": "Form Language",
+      "selectCountry": "Select Country"
     }
   },
   "profile": {

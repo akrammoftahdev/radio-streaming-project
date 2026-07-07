@@ -3,10 +3,13 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { signOut } from "@/auth";
 import { RecordingFullCard } from "@/components/recordings/RecordingPlayer";
+import { getTranslations, getLocale } from "next-intl/server";
+import { isRtl } from "@/i18n/config";
 
-export const metadata = {
-  title: "أرشيف التسجيلات - EGONAIR",
-};
+export async function generateMetadata() {
+  const t = await getTranslations("studio.recordings");
+  return { title: t("pageTitle") };
+}
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +36,10 @@ export default async function RecordingsPage({
 
   const userId = session.user?.id;
   if (!userId) redirect("/login");
+
+  const t = await getTranslations("studio.recordings");
+  const locale = await getLocale();
+  const dir = isRtl(locale) ? 'rtl' : 'ltr';
 
   // ── 2. Parse search params ─────────────────────────────────────────────────
   const {
@@ -157,29 +164,29 @@ export default async function RecordingsPage({
     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-neutral-900 border border-neutral-800 rounded-2xl p-4 my-5 gap-3">
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
         <div className="text-sm text-neutral-400">
-          صفحة <span className="text-neutral-200 font-medium">{page}</span> من <span className="text-neutral-200 font-medium">{totalPages}</span>
+          {t("pageOf", { page, totalPages })}
         </div>
         <div className="text-xs text-neutral-500">
-          (إجمالي {totalCount} تسجيل)
+          {t("totalRecordings", { count: totalCount })}
         </div>
       </div>
       <div className="flex items-center gap-2">
         {page > 1 ? (
           <Link href={buildUrl(page - 1)} className="px-4 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-medium rounded-lg border border-neutral-700 transition-colors">
-            السابق
+            {t("previous")}
           </Link>
         ) : (
           <span className="px-4 py-1.5 bg-neutral-800/30 text-neutral-600 text-xs font-medium rounded-lg border border-neutral-800/50 cursor-not-allowed">
-            السابق
+            {t("previous")}
           </span>
         )}
         {page < totalPages ? (
           <Link href={buildUrl(page + 1)} className="px-4 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-medium rounded-lg border border-neutral-700 transition-colors">
-            التالي
+            {t("next")}
           </Link>
         ) : (
           <span className="px-4 py-1.5 bg-neutral-800/30 text-neutral-600 text-xs font-medium rounded-lg border border-neutral-800/50 cursor-not-allowed">
-            التالي
+            {t("next")}
           </span>
         )}
       </div>
@@ -189,7 +196,7 @@ export default async function RecordingsPage({
   // ── 6. Render ──────────────────────────────────────────────────────────────
   return (
     <div
-      dir="rtl"
+      dir={dir}
       className="min-h-screen bg-neutral-950 text-neutral-100 font-sans"
     >
       {/* ── Background glow ── */}
@@ -219,10 +226,10 @@ export default async function RecordingsPage({
             </div>
             <div>
               <h1 className="text-lg font-bold text-neutral-100 leading-none">
-                أرشيف التسجيلات
+                {t("title")}
               </h1>
               <p className="text-xs text-neutral-500 mt-0.5">
-                تسجيلاتك الصوتية المحفوظة
+                {t("subtitle")}
               </p>
             </div>
           </div>
@@ -246,7 +253,7 @@ export default async function RecordingsPage({
                 <path d="M19 12H5" />
                 <polyline points="12 19 5 12 12 5" />
               </svg>
-              الاستوديو
+              {t("backToStudio")}
             </Link>
 
             {/* Logout */}
@@ -274,7 +281,7 @@ export default async function RecordingsPage({
                   <polyline points="16 17 21 12 16 7" />
                   <line x1="21" y1="12" x2="9" y2="12" />
                 </svg>
-                خروج
+                {t("logoutBtn")}
               </button>
             </form>
           </div>
@@ -290,31 +297,31 @@ export default async function RecordingsPage({
 
             {/* Sort */}
             <div className="flex flex-col gap-1 min-w-[130px]">
-              <label htmlFor="sort" className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider">الترتيب</label>
+              <label htmlFor="sort" className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider">{t("sortLabel")}</label>
               <select
                 id="sort"
                 name="sort"
                 defaultValue={sortKey}
                 className="bg-neutral-800 border border-neutral-700 text-neutral-200 text-xs rounded-lg px-3 py-2 outline-none focus:border-indigo-500 transition-colors"
               >
-                <option value="newest">الأحدث أولاً</option>
-                <option value="oldest">الأقدم أولاً</option>
-                <option value="duration-high">المدة (تنازلي)</option>
-                <option value="duration-low">المدة (تصاعدي)</option>
+                <option value="newest">{t("sortNewest")}</option>
+                <option value="oldest">{t("sortOldest")}</option>
+                <option value="duration-high">{t("sortDurationHigh")}</option>
+                <option value="duration-low">{t("sortDurationLow")}</option>
               </select>
             </div>
 
             {/* Station filter */}
             {presenterStations.length > 1 && (
               <div className="flex flex-col gap-1 min-w-[140px]">
-                <label htmlFor="station" className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider">المحطة</label>
+                <label htmlFor="station" className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider">{t("stationFilter")}</label>
                 <select
                   id="station"
                   name="station"
                   defaultValue={stationFilter}
                   className="bg-neutral-800 border border-neutral-700 text-neutral-200 text-xs rounded-lg px-3 py-2 outline-none focus:border-indigo-500 transition-colors"
                 >
-                  <option value="">جميع المحطات</option>
+                  <option value="">{t("allStations")}</option>
                   {presenterStations.map(s => (
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
@@ -324,7 +331,7 @@ export default async function RecordingsPage({
 
             {/* Date from */}
             <div className="flex flex-col gap-1">
-              <label htmlFor="dateFrom" className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider">من تاريخ</label>
+              <label htmlFor="dateFrom" className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider">{t("dateFrom")}</label>
               <input
                 type="date"
                 id="dateFrom"
@@ -336,7 +343,7 @@ export default async function RecordingsPage({
 
             {/* Date to */}
             <div className="flex flex-col gap-1">
-              <label htmlFor="dateTo" className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider">إلى تاريخ</label>
+              <label htmlFor="dateTo" className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider">{t("dateTo")}</label>
               <input
                 type="date"
                 id="dateTo"
@@ -352,14 +359,14 @@ export default async function RecordingsPage({
                 type="submit"
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-lg transition-colors shadow-md shadow-indigo-500/20"
               >
-                بحث
+                {t("searchBtn")}
               </button>
               {hasFilters && (
                 <Link
                   href="/studio/recordings"
                   className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 text-xs font-medium rounded-lg border border-neutral-700 transition-colors"
                 >
-                  مسح
+                  {t("clearBtn")}
                 </Link>
               )}
             </div>
@@ -370,7 +377,7 @@ export default async function RecordingsPage({
         {dbError && (
           <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-6 text-center mb-8">
             <p className="text-red-400 font-medium">
-              تعذّر تحميل التسجيلات. يرجى المحاولة مجدداً.
+              {t("dbError")}
             </p>
           </div>
         )}
@@ -395,12 +402,12 @@ export default async function RecordingsPage({
               </svg>
             </div>
             <p className="text-xl font-semibold text-neutral-300 mb-2">
-              {hasFilters ? "لا توجد تسجيلات تطابق بحثك" : "لا توجد تسجيلات بعد"}
+              {hasFilters ? t("noMatchTitle") : t("noRecordingsTitle")}
             </p>
             <p className="text-sm text-neutral-500 max-w-xs leading-relaxed">
               {hasFilters
-                ? "جرب تعديل الفلاتر أو مسحها لرؤية نتائج أكثر."
-                : "ستظهر هنا تسجيلاتك الصوتية تلقائياً بعد انتهاء كل جلسة بث."
+                ? t("noMatchDesc")
+                : t("noRecordingsDesc")
               }
             </p>
             {hasFilters && (
@@ -408,7 +415,7 @@ export default async function RecordingsPage({
                 href="/studio/recordings"
                 className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200 border border-neutral-700 text-sm rounded-lg transition-colors"
               >
-                مسح الفلاتر
+                {t("clearFilters")}
               </Link>
             )}
           </div>
@@ -421,12 +428,12 @@ export default async function RecordingsPage({
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm text-neutral-500">
                 {totalCount === 1
-                  ? "تسجيل واحد محفوظ"
-                  : `${totalCount} تسجيل محفوظ`}
+                  ? t("singleRecording")
+                  : t("multiRecordings", { count: totalCount })}
               </p>
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600/20 border border-indigo-500/30 rounded-full text-xs text-indigo-300 font-medium">
                 <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 inline-block" />
-                تخزين محلي
+                {t("localStorage")}
               </span>
             </div>
 
@@ -449,7 +456,7 @@ export default async function RecordingsPage({
                       <circle cx="12" cy="12" r="2" />
                       <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14" />
                     </svg>
-                    <span className="text-xs font-medium text-purple-300">مباشر DJ</span>
+                    <span className="text-xs font-medium text-purple-300">{t("directDjLabel")}</span>
                   </div>
                 )}
                 <RecordingFullCard rec={rec} />

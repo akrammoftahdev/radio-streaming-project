@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import type { PresenterActionResult } from "./actions";
 
@@ -19,6 +20,7 @@ export function PresenterWizardClient({
   deactivateAction,
   hardDeleteAction,
 }: Props) {
+  const t = useTranslations("admin.presenters");
   const router = useRouter();
 
   // Deactivate state
@@ -34,7 +36,7 @@ export function PresenterWizardClient({
   function handleDeactivate() {
     if (
       !window.confirm(
-        "سيتم تعطيل حساب المذيع. يمكن إعادة تفعيله لاحقاً من صفحة التعديل."
+        t("deactivatePresenterConfirm")
       )
     ) return;
 
@@ -55,7 +57,7 @@ export function PresenterWizardClient({
   function handleHardDelete() {
     if (
       !window.confirm(
-        "سيتم حذف حساب المذيع نهائياً. لا يمكن التراجع عن هذا الإجراء."
+        t("deletePresenterConfirm")
       )
     ) return;
 
@@ -75,7 +77,7 @@ export function PresenterWizardClient({
     <div className="space-y-4">
       {/* ── Deactivate zone ── */}
       <div className="bg-amber-950/20 border border-amber-800/30 rounded-2xl p-6">
-        <h2 className="text-sm font-semibold text-amber-400 mb-1">تعطيل المذيع</h2>
+        <h2 className="text-sm font-semibold text-amber-400 mb-1">{t("deactivatePresenterTitle")}</h2>
         <p className="text-xs text-neutral-400 mb-4">
           يوقف البث ويخفي الحساب. يمكن التراجع عنه لاحقاً. البيانات والتسجيلات محفوظة.
         </p>
@@ -101,7 +103,7 @@ export function PresenterWizardClient({
                   جارٍ التعطيل...
                 </>
               ) : (
-                <>{isActive ? "تعطيل المذيع" : "المذيع معطّل بالفعل"}</>
+                <>{isActive ? t("deactivatePresenterBtn") : t("presenterAlreadyDeactivated")}</>
               )}
             </button>
             {deactivateStatus === "error" && (
@@ -113,7 +115,7 @@ export function PresenterWizardClient({
 
       {/* ── Hard delete danger zone ── */}
       <div className="bg-red-950/20 border border-red-800/40 rounded-2xl p-6">
-        <h2 className="text-sm font-semibold text-red-400 mb-1">⚠ حذف نهائي</h2>
+        <h2 className="text-sm font-semibold text-red-400 mb-1">⚠ {t("hardDeleteTitle")}</h2>
         <p className="text-xs text-neutral-400 mb-4">
           يحذف الحساب والبيانات المرتبطة به نهائياً. هذا الإجراء لا يمكن التراجع عنه.
         </p>
@@ -135,7 +137,7 @@ export function PresenterWizardClient({
                   جارٍ الحذف...
                 </>
               ) : (
-                "حذف المذيع نهائياً"
+                t("hardDeleteBtn")
               )}
             </button>
             {deleteStatus === "error" && (

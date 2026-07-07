@@ -1,6 +1,7 @@
 "use server";
 
 import { auth, prisma } from "@/auth";
+import { getTranslations } from "next-intl/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -41,13 +42,13 @@ export async function deactivatePresenter(
 ): Promise<PresenterActionResult> {
   const adminId     = await getAdminId();
   const presenterId = (formData.get("presenterId") as string)?.trim() ?? "";
-  if (!presenterId) return { ok: false, error: "معرّف المذيع مطلوب" };
+  if (!presenterId) return { ok: false, error: (await getTranslations("admin.presenters"))("errorPresenterIdRequired") };
 
   const presenter = await prisma.user.findUnique({
     where:  { id: presenterId },
     select: { id: true, username: true, isActive: true },
   });
-  if (!presenter) return { ok: false, error: "المذيع غير موجود" };
+  if (!presenter) return { ok: false, error: (await getTranslations("admin.presenters"))("errorPresenterNotFound") };
 
   const deps = await getDependencyCounts(presenterId);
 
@@ -80,13 +81,13 @@ export async function hardDeletePresenter(
 ): Promise<PresenterActionResult> {
   const adminId     = await getAdminId();
   const presenterId = (formData.get("presenterId") as string)?.trim() ?? "";
-  if (!presenterId) return { ok: false, error: "معرّف المذيع مطلوب" };
+  if (!presenterId) return { ok: false, error: (await getTranslations("admin.presenters"))("errorPresenterIdRequired") };
 
   const presenter = await prisma.user.findUnique({
     where:  { id: presenterId },
     select: { id: true, username: true, role: true, presenterMode: true },
   });
-  if (!presenter) return { ok: false, error: "المذيع غير موجود" };
+  if (!presenter) return { ok: false, error: (await getTranslations("admin.presenters"))("errorPresenterNotFound") };
 
   // Re-check blocking dependencies (server-side guard — never rely on client)
   // Policy: block on ACTIVE programs only (disabled programs are not a blocker).
@@ -99,11 +100,11 @@ export async function hardDeletePresenter(
     return {
       ok: false,
       error: [
-        deps.activePrograms > 0 ? `${deps.activePrograms} برنامج نشط` : null,
-        deps.recordings    > 0 ? `${deps.recordings} تسجيل`       : null,
-        deps.liveSessions  > 0 ? `${deps.liveSessions} جلسة بث`    : null,
-        deps.schedules     > 0 ? `${deps.schedules} جدول بث`       : null,
-      ].filter(Boolean).join(" · ") + " — يمنع الحذف النهائي",
+        deps.activePrograms > 0 ? (await getTranslations("admin.presenters"))("blockerActivePrograms", { count: deps.activePrograms }) : null,
+        deps.recordings > 0 ? (await getTranslations("admin.presenters"))("blockerRecordings", { count: deps.recordings }) : null,
+        deps.liveSessions > 0 ? (await getTranslations("admin.presenters"))("blockerLiveSessions", { count: deps.liveSessions }) : null,
+        deps.schedules > 0 ? (await getTranslations("admin.presenters"))("blockerLegacySchedules", { count: deps.schedules }) : null,
+      ].filter(Boolean).join(" · ") + " — " + (await getTranslations("admin.presenters"))("blocksHardDelete"),
     };
   }
 
@@ -160,8 +161,8 @@ export async function hardDeletePresenter(
     return {
       ok: false,
       error: isFk
-        ? "فشل الحذف — لا يزال هناك ارتباط بجداول أخرى لم تُنظَّف. راجع قائمة التبعيات وأعد المحاولة."
-        : `فشل الحذف: ${msg.slice(0, 150)}`,
+        ? (await getTranslations("admin.presenters"))("errorDeleteFailedDependencies")
+        : (await getTranslations("admin.presenters"))("errorDeleteFailed", { msg: msg.slice(0, 150) }),
     };
   }
 
@@ -176,10 +177,10 @@ export async function disableAllPresenterPrograms(
 ): Promise<PresenterActionResult> {
   const adminId     = await getAdminId();
   const presenterId = (formData.get("presenterId") as string)?.trim() ?? "";
-  if (!presenterId) return { ok: false, error: "معرّف المذيع مطلوب" };
+  if (!presenterId) return { ok: false, error: (await getTranslations("admin.presenters"))("errorPresenterIdRequired") };
 
   const presenter = await prisma.user.findUnique({ where: { id: presenterId }, select: { username: true } });
-  if (!presenter) return { ok: false, error: "المذيع غير موجود" };
+  if (!presenter) return { ok: false, error: (await getTranslations("admin.presenters"))("errorPresenterNotFound") };
 
   const { count } = await prisma.program.updateMany({
     where: { presenterId },
@@ -203,10 +204,10 @@ export async function deleteLegacyBroadcastSchedules(
 ): Promise<PresenterActionResult> {
   const adminId     = await getAdminId();
   const presenterId = (formData.get("presenterId") as string)?.trim() ?? "";
-  if (!presenterId) return { ok: false, error: "معرّف المذيع مطلوب" };
+  if (!presenterId) return { ok: false, error: (await getTranslations("admin.presenters"))("errorPresenterIdRequired") };
 
   const presenter = await prisma.user.findUnique({ where: { id: presenterId }, select: { username: true } });
-  if (!presenter) return { ok: false, error: "المذيع غير موجود" };
+  if (!presenter) return { ok: false, error: (await getTranslations("admin.presenters"))("errorPresenterNotFound") };
 
   const { count } = await prisma.broadcastSchedule.deleteMany({ where: { presenterId } });
 
@@ -227,10 +228,10 @@ export async function unlinkAllPresenterStations(
 ): Promise<PresenterActionResult> {
   const adminId     = await getAdminId();
   const presenterId = (formData.get("presenterId") as string)?.trim() ?? "";
-  if (!presenterId) return { ok: false, error: "معرّف المذيع مطلوب" };
+  if (!presenterId) return { ok: false, error: (await getTranslations("admin.presenters"))("errorPresenterIdRequired") };
 
   const presenter = await prisma.user.findUnique({ where: { id: presenterId }, select: { username: true } });
-  if (!presenter) return { ok: false, error: "المذيع غير موجود" };
+  if (!presenter) return { ok: false, error: (await getTranslations("admin.presenters"))("errorPresenterNotFound") };
 
   const { count } = await prisma.presenterStation.deleteMany({ where: { presenterId } });
 
@@ -251,10 +252,10 @@ export async function deletePresenterLegacyCredentials(
 ): Promise<PresenterActionResult> {
   const adminId     = await getAdminId();
   const presenterId = (formData.get("presenterId") as string)?.trim() ?? "";
-  if (!presenterId) return { ok: false, error: "معرّف المذيع مطلوب" };
+  if (!presenterId) return { ok: false, error: (await getTranslations("admin.presenters"))("errorPresenterIdRequired") };
 
   const presenter = await prisma.user.findUnique({ where: { id: presenterId }, select: { username: true } });
-  if (!presenter) return { ok: false, error: "المذيع غير موجود" };
+  if (!presenter) return { ok: false, error: (await getTranslations("admin.presenters"))("errorPresenterNotFound") };
 
   const { count } = await prisma.sonicPanelCredential.deleteMany({ where: { presenterId } });
 
@@ -275,10 +276,10 @@ export async function deletePresenterValidity(
 ): Promise<PresenterActionResult> {
   const adminId     = await getAdminId();
   const presenterId = (formData.get("presenterId") as string)?.trim() ?? "";
-  if (!presenterId) return { ok: false, error: "معرّف المذيع مطلوب" };
+  if (!presenterId) return { ok: false, error: (await getTranslations("admin.presenters"))("errorPresenterIdRequired") };
 
   const presenter = await prisma.user.findUnique({ where: { id: presenterId }, select: { username: true } });
-  if (!presenter) return { ok: false, error: "المذيع غير موجود" };
+  if (!presenter) return { ok: false, error: (await getTranslations("admin.presenters"))("errorPresenterNotFound") };
 
   const { count } = await prisma.presenterValidity.deleteMany({ where: { presenterId } });
 
@@ -299,10 +300,10 @@ export async function deletePresenterDirectDjRadios(
 ): Promise<PresenterActionResult> {
   const adminId     = await getAdminId();
   const presenterId = (formData.get("presenterId") as string)?.trim() ?? "";
-  if (!presenterId) return { ok: false, error: "معرّف المذيع مطلوب" };
+  if (!presenterId) return { ok: false, error: (await getTranslations("admin.presenters"))("errorPresenterIdRequired") };
 
   const presenter = await prisma.user.findUnique({ where: { id: presenterId }, select: { username: true } });
-  if (!presenter) return { ok: false, error: "المذيع غير موجود" };
+  if (!presenter) return { ok: false, error: (await getTranslations("admin.presenters"))("errorPresenterNotFound") };
 
   const { count } = await prisma.directDjRadio.deleteMany({ where: { presenterId } });
 
@@ -324,16 +325,16 @@ export async function cleanupPresenterLiveSessions(
 ): Promise<PresenterActionResult> {
   const adminId     = await getAdminId();
   const presenterId = (formData.get("presenterId") as string)?.trim() ?? "";
-  if (!presenterId) return { ok: false, error: "معرّف المذيع مطلوب" };
+  if (!presenterId) return { ok: false, error: (await getTranslations("admin.presenters"))("errorPresenterIdRequired") };
 
   const presenter = await prisma.user.findUnique({
     where:  { id: presenterId },
     select: { username: true, role: true },
   });
-  if (!presenter) return { ok: false, error: "المذيع غير موجود" };
+  if (!presenter) return { ok: false, error: (await getTranslations("admin.presenters"))("errorPresenterNotFound") };
 
   if (presenter.role === "ADMIN" || presenter.role === "STATION_MANAGER") {
-    return { ok: false, error: "لا يمكن تنظيف جلسات مستخدم من نوع ADMIN أو STATION_MANAGER" };
+    return { ok: false, error: (await getTranslations("admin.presenters"))("errorCannotCleanupAdminSessions") };
   }
 
   // Guard: recordings are linked via liveSessionId FK — delete recordings first
@@ -341,7 +342,7 @@ export async function cleanupPresenterLiveSessions(
   if (recordingCount > 0) {
     return {
       ok: false,
-      error: "يجب حذف تسجيلات المذيع أولاً قبل تنظيف جلسات البث.",
+      error: (await getTranslations("admin.presenters"))("errorMustDeleteRecordingsFirst"),
     };
   }
 

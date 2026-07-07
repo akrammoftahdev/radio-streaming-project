@@ -42,7 +42,6 @@ rsync -avz --progress \
   --exclude='.next' \
   --exclude='*.db' \
   --exclude='.env' \
-  --exclude='dev.db' \
   --exclude='*.webm' \
   "$(dirname "$0")/../frontend/" \
   "$REMOTE:$REMOTE_BASE/frontend/"

@@ -60,7 +60,7 @@ export async function GET(req: Request) {
 
     // ── Use the NEW Program Schedule System ──────────────────────────────────
     const now = new Date();
-    const session = await resolveCurrentOrNextProgramSession(presenterId, now);
+    const session = await resolveCurrentOrNextProgramSession(presenterId, now, stationId);
 
     // Filter to the requested station only
     if (!session || session.stationId !== stationId) {

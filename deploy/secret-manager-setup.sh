@@ -43,4 +43,3 @@ echo "[+] Granting Cloud Run SA access to secrets..."
 
 echo "[+] Done. Update secret values before deploying Cloud Run."
 echo ""
-echo "Next step: Run deploy/migrate-sqlite-to-postgres.sh"

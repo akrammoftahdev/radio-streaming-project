@@ -10,8 +10,9 @@ export async function proxy(req: NextRequest) {
   const isAuthRoute = pathname.startsWith("/login");
   const isApiRoute = pathname.startsWith("/api");
   const isUploads = pathname.startsWith("/uploads");
+  const isEmbedRoute = pathname.startsWith("/embed");
 
-  if (isApiRoute || isUploads) return NextResponse.next();
+  if (isApiRoute || isUploads || isEmbedRoute) return NextResponse.next();
 
   if (isAuthRoute) {
     if (isLoggedIn) {

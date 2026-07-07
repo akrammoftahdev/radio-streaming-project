@@ -4,9 +4,14 @@ import { Unauthorized }      from "@/components/ui/Unauthorized";
 import { AdminPageShell }    from "@/components/ui/AdminPageShell";
 import { getSystemSettings } from "@/lib/system-settings";
 import { saveSystemSettings, saveThemeSettings, uploadSystemAsset } from "./actions";
+import { getTranslations }   from "next-intl/server";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "إعدادات النظام — EGONAIR" };
+
+export async function generateMetadata() {
+  const t = await getTranslations('admin.settings');
+  return { title: `${t('title')} — EGONAIR` };
+}
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -25,7 +30,7 @@ function Section({ icon, title, children }: {
 }
 
 // Read-only display row (used for theme / meta sections)
-function FieldRow({ label, value }: { label: string; value: string | null | undefined }) {
+function FieldRow({ label, value, notSpecifiedText }: { label: string; value: string | null | undefined; notSpecifiedText: string }) {
   const display = value?.trim() || null;
   return (
     <div className="flex items-start gap-4 py-2.5 border-b border-slate-700/30 last:border-0">
@@ -33,28 +38,8 @@ function FieldRow({ label, value }: { label: string; value: string | null | unde
         {label}
       </span>
       <span className={`text-sm ${display ? "text-slate-200" : "text-slate-600 italic"}`}>
-        {display ?? "غير محدد"}
+        {display ?? notSpecifiedText}
       </span>
-    </div>
-  );
-}
-
-// Colour swatch row (theme section)
-function ColorRow({ label, value }: { label: string; value: string | null | undefined }) {
-  const hex = value?.trim() || null;
-  return (
-    <div className="flex items-center gap-4 py-2.5 border-b border-slate-700/30 last:border-0">
-      <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide w-44 flex-shrink-0">
-        {label}
-      </span>
-      {hex ? (
-        <div className="flex items-center gap-2">
-          <span className="w-4 h-4 rounded border border-slate-600 flex-shrink-0" style={{ background: hex }} />
-          <span className="text-sm text-slate-200 font-mono">{hex}</span>
-        </div>
-      ) : (
-        <span className="text-sm text-slate-600 italic">افتراضي (من globals.css)</span>
-      )}
     </div>
   );
 }
@@ -77,7 +62,7 @@ function Field({
         type={type}
         defaultValue={value ?? ""}
         placeholder={placeholder}
-        dir={type === "email" || name.includes("Url") || name.includes("url") ? "ltr" : "rtl"}
+        dir={type === "email" || name.includes("Url") || name.includes("url") ? "ltr" : "auto"}
         className={[
           "w-full px-4 py-2.5 rounded-xl text-sm text-slate-100 placeholder-slate-600",
           "bg-slate-900 border border-slate-700",
@@ -92,9 +77,9 @@ function Field({
 
 // Editable URL field + File upload form action
 function AssetUploadField({
-  label, name, value, hint,
+  label, name, value, hint, placeholder, uploadBtn
 }: {
-  label: string; name: string; value: string | null | undefined; hint?: string;
+  label: string; name: string; value: string | null | undefined; hint?: string; placeholder: string; uploadBtn: string;
 }) {
   return (
     <div className="space-y-2 border border-slate-700/50 rounded-xl p-3 bg-slate-800/30">
@@ -102,7 +87,7 @@ function AssetUploadField({
         <label htmlFor={`field-${name}`} className="block text-[11px] font-bold text-slate-400 uppercase tracking-wide">
           {label}
         </label>
-        {hint && <span className="text-[10px] text-slate-500 max-w-[50%] text-left truncate" title={hint}>{hint}</span>}
+        {hint && <span className="text-[10px] text-slate-500 max-w-[50%] ltr:text-left rtl:text-right truncate" title={hint}>{hint}</span>}
       </div>
       
       <input
@@ -110,7 +95,7 @@ function AssetUploadField({
         name={name}
         type="text"
         defaultValue={value ?? ""}
-        placeholder="https://... أو /uploads/..."
+        placeholder={placeholder}
         dir="ltr"
         className="w-full px-3 py-2 rounded-lg text-xs text-slate-100 placeholder-slate-600 bg-slate-900 border border-slate-700 focus:outline-none focus:border-[var(--eg-primary)]"
       />
@@ -127,7 +112,7 @@ function AssetUploadField({
           formAction={uploadSystemAsset.bind(null, name)}
           className="px-3 py-1 text-[11px] font-semibold bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-md transition-colors whitespace-nowrap"
         >
-          رفع
+          {uploadBtn}
         </button>
       </div>
     </div>
@@ -140,6 +125,7 @@ export default async function AdminSettingsPage({
 }: {
   searchParams: Promise<{ updated?: string; themeUpdated?: string; assetUpdated?: string }>;
 }) {
+  const t = await getTranslations('admin.settings');
   // Auth guard
   const session = await auth();
   if (!session?.user) redirect("/login");
@@ -155,10 +141,10 @@ export default async function AdminSettingsPage({
 
   return (
     <AdminPageShell
-      title="إعدادات النظام"
-      description="هوية النظام، بيانات الدعم، وروابط الشعار"
+      title={t('title')}
+      description={t('description')}
       backHref="/admin"
-      backLabel="← لوحة الإدارة"
+      backLabel={t('backLabel')}
     >
       <div className="space-y-6">
 
@@ -166,7 +152,7 @@ export default async function AdminSettingsPage({
         {justSaved && (
           <div className="flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-3 text-sm text-emerald-400">
             <span className="text-base flex-shrink-0">✅</span>
-            <span>تم حفظ إعدادات الهوية والدعم بنجاح.</span>
+            <span>{t('saveSuccess')}</span>
           </div>
         )}
 
@@ -177,21 +163,40 @@ export default async function AdminSettingsPage({
           <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl overflow-hidden">
             <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-slate-700/40">
               <span className="text-lg">🏷️</span>
-              <h2 className="text-sm font-semibold text-slate-200">هوية النظام</h2>
+              <h2 className="text-sm font-semibold text-slate-200">{t('systemIdentity')}</h2>
             </div>
-            <div className="px-5 py-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="px-5 py-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Field
-                label="اسم النظام"
+                label={t('systemName')}
                 name="systemName"
                 value={s.systemName}
-                placeholder="EGONAIR"
+                placeholder={t('systemNamePh')}
               />
               <Field
-                label="الوصف الفرعي"
+                label={t('systemSubtitle')}
                 name="systemSubtitle"
                 value={s.systemSubtitle}
-                placeholder="ستوديو البث الإذاعي عن بعد"
+                placeholder={t('systemSubtitlePh')}
               />
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                  {t('defaultLanguage')}
+                </label>
+                <select
+                  name="defaultLanguage"
+                  defaultValue={(s as any).defaultLanguage ?? "ar"}
+                  className="w-full px-4 py-2.5 rounded-xl text-sm bg-slate-900 border border-slate-700 text-slate-100 focus:outline-none focus:ring-1 focus:ring-[var(--eg-primary)]/30 transition-colors"
+                >
+                  <option value="ar">{t('ar')}</option>
+                  <option value="en">{t('en')}</option>
+                  <option value="fr">{t('fr')}</option>
+                  <option value="tr">{t('tr')}</option>
+                  <option value="pt">{t('pt')}</option>
+                  <option value="es">{t('es')}</option>
+                  <option value="de">{t('de')}</option>
+                </select>
+                <p className="text-xs text-slate-600">{t('defaultLanguageHint')}</p>
+              </div>
             </div>
           </div>
 
@@ -199,29 +204,29 @@ export default async function AdminSettingsPage({
           <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl overflow-hidden">
             <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-slate-700/40">
               <span className="text-lg">📞</span>
-              <h2 className="text-sm font-semibold text-slate-200">بيانات الدعم</h2>
+              <h2 className="text-sm font-semibold text-slate-200">{t('supportContacts')}</h2>
             </div>
             <div className="px-5 py-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Field
-                label="رقم الهاتف"
+                label={t('supportPhone')}
                 name="supportPhone"
                 value={s.supportPhone}
                 type="tel"
-                placeholder="+201xxxxxxxxx"
+                placeholder={t('supportPhonePh')}
               />
               <Field
-                label="واتساب"
+                label={t('supportWhatsapp')}
                 name="supportWhatsapp"
                 value={s.supportWhatsapp}
                 type="tel"
-                placeholder="+201xxxxxxxxx"
+                placeholder={t('supportPhonePh')}
               />
               <Field
-                label="البريد الإلكتروني"
+                label={t('supportEmail')}
                 name="supportEmail"
                 value={s.supportEmail}
                 type="email"
-                placeholder="support@egonair.com"
+                placeholder={t('supportEmailPh')}
               />
             </div>
           </div>
@@ -230,81 +235,97 @@ export default async function AdminSettingsPage({
           <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl overflow-hidden">
             <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-slate-700/40">
               <span className="text-lg">🖼️</span>
-              <h2 className="text-sm font-semibold text-slate-200">الشعارات والأصول البصرية</h2>
-              <span className="mr-auto text-xs text-slate-600">يمكنك وضع رابط مباشر أو رفع ملف ليتم حفظه على الخادم</span>
+              <h2 className="text-sm font-semibold text-slate-200">{t('visualAssets')}</h2>
+              <span className="ltr:ml-auto rtl:mr-auto text-xs text-slate-600">{t('assetHint')}</span>
             </div>
             
             {justSavedAsset && (
               <div className="mx-5 mt-4 flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-3 text-sm text-emerald-400">
                 <span className="text-base flex-shrink-0">✅</span>
-                <span>تم رفع الأصل البصري بنجاح.</span>
+                <span>{t('assetSuccess')}</span>
               </div>
             )}
 
             <div className="px-5 py-4 space-y-5">
               {/* System logos */}
               <div>
-                <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-3">شعار النظام</p>
+                <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-3">{t('systemLogo')}</p>
                 <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
                   <AssetUploadField
-                    label="الوضع الداكن"
+                    label={t('darkMode')}
                     name="logoDarkUrl"
                     value={s.logoDarkUrl}
-                    hint="الرئيسي للخلفية الداكنة"
+                    hint={t('darkModeHint')}
+                    placeholder={t('uploadPlaceholder')}
+                    uploadBtn={t('uploadBtn')}
                   />
                   <AssetUploadField
-                    label="الوضع الفاتح"
+                    label={t('lightMode')}
                     name="logoLightUrl"
                     value={s.logoLightUrl}
-                    hint="الرئيسي للخلفية الفاتحة"
+                    hint={t('lightModeHint')}
+                    placeholder={t('uploadPlaceholder')}
+                    uploadBtn={t('uploadBtn')}
                   />
                   <AssetUploadField
-                    label="عام (احتياطي)"
+                    label={t('globalFallback')}
                     name="logoUrl"
                     value={s.logoUrl}
-                    hint="بديل إذا لم يُحدد الوضع"
+                    hint={t('globalFallbackHint')}
+                    placeholder={t('uploadPlaceholder')}
+                    uploadBtn={t('uploadBtn')}
                   />
                 </div>
               </div>
               {/* Login page logos */}
               <div>
-                <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-3">شعار صفحة الدخول</p>
+                <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-3">{t('loginLogoTitle')}</p>
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                   <AssetUploadField
-                    label="شعار الدخول — داكن"
+                    label={t('loginLogoDark')}
                     name="loginLogoDarkUrl"
                     value={s.loginLogoDarkUrl}
-                    hint="لصفحة تسجيل الدخول (داكن)"
+                    hint={t('loginLogoDarkHint')}
+                    placeholder={t('uploadPlaceholder')}
+                    uploadBtn={t('uploadBtn')}
                   />
                   <AssetUploadField
-                    label="شعار الدخول — فاتح"
+                    label={t('loginLogoLight')}
                     name="loginLogoLightUrl"
                     value={s.loginLogoLightUrl}
-                    hint="لصفحة تسجيل الدخول (فاتح)"
+                    hint={t('loginLogoLightHint')}
+                    placeholder={t('uploadPlaceholder')}
+                    uploadBtn={t('uploadBtn')}
                   />
                 </div>
               </div>
               {/* App assets */}
               <div>
-                <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-3">أصول التطبيق</p>
+                <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-3">{t('appAssets')}</p>
                 <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
                   <AssetUploadField
-                    label="Favicon"
+                    label={t('faviconTitle')}
                     name="faviconUrl"
                     value={s.faviconUrl}
-                    hint="أيقونة المتصفح"
+                    hint={t('faviconHint')}
+                    placeholder={t('uploadPlaceholder')}
+                    uploadBtn={t('uploadBtn')}
                   />
                   <AssetUploadField
-                    label="أيقونة PWA"
+                    label={t('pwaIconTitle')}
                     name="mobileAppIconUrl"
                     value={s.mobileAppIconUrl}
-                    hint="للتطبيق المحمول 512x512"
+                    hint={t('pwaIconHint')}
+                    placeholder={t('uploadPlaceholder')}
+                    uploadBtn={t('uploadBtn')}
                   />
                   <AssetUploadField
-                    label="Splash Screen"
+                    label={t('splashScreenTitle')}
                     name="splashScreenUrl"
                     value={s.splashScreenUrl}
-                    hint="صورة شاشة الفتح"
+                    hint={t('splashScreenHint')}
+                    placeholder={t('uploadPlaceholder')}
+                    uploadBtn={t('uploadBtn')}
                   />
                 </div>
               </div>
@@ -328,7 +349,7 @@ export default async function AdminSettingsPage({
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 flex-shrink-0">
                 <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clipRule="evenodd" />
               </svg>
-              حفظ الإعدادات
+              {t('saveSettingsBtn')}
             </button>
           </div>
 
@@ -339,8 +360,8 @@ export default async function AdminSettingsPage({
           <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl overflow-hidden">
             <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-slate-700/40">
               <span className="text-lg">🎨</span>
-              <h2 className="text-sm font-semibold text-slate-200">التصميم والألوان</h2>
-              <span className="mr-auto text-xs text-slate-500">null = استخدام الافتراضي من globals.css</span>
+              <h2 className="text-sm font-semibold text-slate-200">{t('designColors')}</h2>
+              <span className="ltr:ml-auto rtl:mr-auto text-xs text-slate-500">{t('defaultThemeHint')}</span>
             </div>
             {/* Theme save success banner — inside the section */}
             {justSavedTheme && (
@@ -349,7 +370,7 @@ export default async function AdminSettingsPage({
                 style={{ background: "color-mix(in srgb, var(--eg-accent) 10%, transparent)", borderColor: "color-mix(in srgb, var(--eg-accent) 30%, transparent)", color: "var(--eg-accent)" }}
               >
                 <span className="text-base flex-shrink-0">🎨</span>
-                <span>تم حفظ إعدادات الألوان بنجاح — ستظهر التغييرات عند إعادة تحميل أي صفحة.</span>
+                <span>{t('themeSuccess')}</span>
               </div>
             )}
             <div className="px-5 py-4 space-y-5">
@@ -357,7 +378,7 @@ export default async function AdminSettingsPage({
               {/* Default theme mode */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide">
-                  الوضع الافتراضي
+                  {t('defaultMode')}
                 </label>
                 <select
                   name="defaultTheme"
@@ -365,37 +386,35 @@ export default async function AdminSettingsPage({
                   className="px-4 py-2.5 rounded-xl text-sm bg-slate-900 border border-slate-700 focus:outline-none focus:ring-1 focus:ring-[var(--eg-primary)]/30 transition-colors"
                   style={{ color: "var(--eg-text)", borderColor: "var(--eg-border)" }}
                 >
-                  <option value="dark">🌙 داكن (dark)</option>
-                  <option value="light">☀️ فاتح (light)</option>
+                  <option value="dark">{t('darkOption')}</option>
+                  <option value="light">{t('lightOption')}</option>
                 </select>
               </div>
 
               {/* Dark theme colors */}
               <div>
-                <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-3">الوضع الداكن</p>
+                <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-3">{t('darkModeSection')}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {([
-                    { name: "darkPrimary",    label: "اللون الأساسي",  placeholder: "#6366f1" },
-                    { name: "darkAccent",     label: "اللون المميز",    placeholder: "#0891b2" },
-                    { name: "darkBackground", label: "خلفية الصفحة",   placeholder: "#0f172a" },
-                    { name: "darkSurface",    label: "خلفية البطاقات", placeholder: "#1e293b" },
-                    { name: "darkText",       label: "لون النص",       placeholder: "#f1f5f9" },
+                    { name: "darkPrimary",    label: t('primaryColor'),  placeholder: "#6366f1" },
+                    { name: "darkAccent",     label: t('accentColor'),    placeholder: "#0891b2" },
+                    { name: "darkBackground", label: t('pageBg'),   placeholder: "#0f172a" },
+                    { name: "darkSurface",    label: t('cardBg'), placeholder: "#1e293b" },
+                    { name: "darkText",       label: t('textColor'),       placeholder: "#f1f5f9" },
                   ] as const).map(({ name, label, placeholder }) => {
                     const current = (s as any)[name] as string | null;
                     return (
                       <div key={name} className="space-y-1.5">
                         <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide">{label}</label>
                         <div className="flex gap-2 items-center">
-                          {/* Color picker IS the form field — name= here so its value submits */}
                           <input
                             type="color"
                             name={name}
-                            aria-label={`لون ${label}`}
+                            aria-label={`Color ${label}`}
                             defaultValue={current ?? placeholder}
                             className="w-10 h-10 rounded-lg border border-slate-700 bg-slate-900 cursor-pointer flex-shrink-0 p-0.5"
                             style={{ colorScheme: "dark" }}
                           />
-                          {/* Text display — read-only, no name, shows saved value */}
                           <input
                             type="text"
                             readOnly
@@ -406,7 +425,7 @@ export default async function AdminSettingsPage({
                             className="flex-1 px-3 py-2 rounded-xl text-sm text-slate-500 placeholder-slate-600 bg-slate-900/50 border border-slate-700/50 font-mono cursor-default select-none"
                           />
                         </div>
-                        <p className="text-[10px] text-slate-600">اختر لوناً من المشغّل لحفظه — أو اتركه على الافتراضي</p>
+                        <p className="text-[10px] text-slate-600">{t('colorPickerHint')}</p>
                       </div>
                     );
                   })}
@@ -415,30 +434,28 @@ export default async function AdminSettingsPage({
 
               {/* Light theme colors */}
               <div>
-                <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-3">الوضع الفاتح</p>
+                <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-3">{t('lightModeSection')}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {([
-                    { name: "lightPrimary",    label: "اللون الأساسي",  placeholder: "#4f46e5" },
-                    { name: "lightAccent",     label: "اللون المميز",    placeholder: "#0284c7" },
-                    { name: "lightBackground", label: "خلفية الصفحة",   placeholder: "#f8fafc" },
-                    { name: "lightSurface",    label: "خلفية البطاقات", placeholder: "#ffffff" },
-                    { name: "lightText",       label: "لون النص",       placeholder: "#0f172a" },
+                    { name: "lightPrimary",    label: t('primaryColor'),  placeholder: "#4f46e5" },
+                    { name: "lightAccent",     label: t('accentColor'),    placeholder: "#0284c7" },
+                    { name: "lightBackground", label: t('pageBg'),   placeholder: "#f8fafc" },
+                    { name: "lightSurface",    label: t('cardBg'), placeholder: "#ffffff" },
+                    { name: "lightText",       label: t('textColor'),       placeholder: "#0f172a" },
                   ] as const).map(({ name, label, placeholder }) => {
                     const current = (s as any)[name] as string | null;
                     return (
                       <div key={name} className="space-y-1.5">
                         <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide">{label}</label>
                         <div className="flex gap-2 items-center">
-                          {/* Color picker IS the form field — name= here so its value submits */}
                           <input
                             type="color"
                             name={name}
-                            aria-label={`لون ${label}`}
+                            aria-label={`Color ${label}`}
                             defaultValue={current ?? placeholder}
                             className="w-10 h-10 rounded-lg border border-slate-700 bg-slate-900 cursor-pointer flex-shrink-0 p-0.5"
                             style={{ colorScheme: "dark" }}
                           />
-                          {/* Text display — read-only, no name, shows saved value */}
                           <input
                             type="text"
                             readOnly
@@ -449,7 +466,7 @@ export default async function AdminSettingsPage({
                             className="flex-1 px-3 py-2 rounded-xl text-sm text-slate-500 placeholder-slate-600 bg-slate-900/50 border border-slate-700/50 font-mono cursor-default select-none"
                           />
                         </div>
-                        <p className="text-[10px] text-slate-600">اختر لوناً من المشغّل لحفظه — أو اتركه على الافتراضي</p>
+                        <p className="text-[10px] text-slate-600">{t('colorPickerHint')}</p>
                       </div>
 
                     );
@@ -475,7 +492,7 @@ export default async function AdminSettingsPage({
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 flex-shrink-0">
                     <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clipRule="evenodd" />
                   </svg>
-                  حفظ الألوان
+                  {t('saveColorsBtn')}
                 </button>
               </div>
 
@@ -484,12 +501,13 @@ export default async function AdminSettingsPage({
         </form>
 
         {/* ── READ-ONLY: Meta ───────────────────────────────────────────── */}
-        <Section icon="🕐" title="آخر تحديث">
+        <Section icon="🕐" title={t('lastUpdateTitle')}>
           <FieldRow
-            label="آخر تعديل"
-            value={s.updatedAt.getTime() === 0 ? null : s.updatedAt.toLocaleString("ar-EG")}
+            label={t('lastModified')}
+            value={s.updatedAt.getTime() === 0 ? null : s.updatedAt.toLocaleString()}
+            notSpecifiedText={t('notSpecified')}
           />
-          <FieldRow label="بواسطة" value={s.updatedBy} />
+          <FieldRow label={t('by')} value={s.updatedBy} notSpecifiedText={t('notSpecified')} />
         </Section>
 
       </div>

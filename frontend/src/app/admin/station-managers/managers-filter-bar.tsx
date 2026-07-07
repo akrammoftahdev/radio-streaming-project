@@ -6,12 +6,14 @@ import { SearchFilter }       from "@/components/ui/SearchFilter";
 import { MultiSmartSelect }   from "@/components/ui/MultiSmartSelect";
 import { SegmentedFilter }    from "@/components/ui/SegmentedFilter";
 import { ClearFiltersButton } from "@/components/ui/ClearFiltersButton";
+import { useTranslations } from "next-intl";
 
 type Station = { id: string; name: string; slug: string };
 
 export function ManagersFilterBar({ allStations }: { allStations: Station[] }) {
   const router = useRouter();
   const sp     = useSearchParams();
+  const t      = useTranslations("admin.stationManagers");
 
   // ── URL-derived values (source of truth after navigation) ──────────────────
   const urlStations   = (sp.get("stations") ?? "").split(",").filter(Boolean);
@@ -68,16 +70,16 @@ export function ManagersFilterBar({ allStations }: { allStations: Station[] }) {
           options={allStations.map(s => ({ value: s.id, label: `${s.name} (${s.slug})` }))}
           values={urlStations}
           onChange={applyStations}
-          placeholder="المحطات"
+          placeholder={t("filterStations")}
         />
 
         {/* Status — fixed-value, mutually exclusive → SegmentedFilter */}
         <SegmentedFilter
           value={currentStatus}
           options={[
-            { value: "all",      label: "الكل"    },
-            { value: "active",   label: "نشطون"  },
-            { value: "inactive", label: "معطّلون" },
+            { value: "all",      label: t("filterAll")    },
+            { value: "active",   label: t("filterActive")  },
+            { value: "inactive", label: t("filterInactive") },
           ]}
           onChange={v => navigate({ status: v === "all" ? "" : v })}
         />
@@ -87,13 +89,13 @@ export function ManagersFilterBar({ allStations }: { allStations: Station[] }) {
           <SearchFilter
             value={localQ}
             onChange={onSearchChange}
-            placeholder="بحث بالاسم أو اسم المستخدم أو البريد..."
+            placeholder={t("searchPlaceholder")}
           />
         </div>
 
         {/* Clear all */}
         {isAnyFilterActive && (
-          <ClearFiltersButton onClick={clearAll} label="مسح الكل" />
+          <ClearFiltersButton onClick={clearAll} label={t("clearAllFilters")} />
         )}
 
       </div>

@@ -43,7 +43,6 @@ export function SegmentedFilter({
         <label className="text-xs font-medium" style={{ color: "var(--eg-text-muted)" }}>{label}</label>
       )}
       <div
-        dir="rtl"
         className="inline-flex items-center rounded-lg p-0.5 gap-0.5 flex-wrap border"
         style={{ background: "var(--eg-surface-soft)", borderColor: "var(--eg-border)" }}
       >

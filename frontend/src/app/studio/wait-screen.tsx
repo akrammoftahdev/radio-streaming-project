@@ -1,9 +1,13 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useTranslations, useLocale } from 'next-intl';
+import { isRtl, DATE_LOCALES } from '@/i18n/config';
+import type { Locale } from '@/i18n/config';
 import Link from "next/link";
 import LogoutButton from "./logout-button";
 import { RecordingCompactList } from "@/components/recordings/RecordingPlayer";
+import LanguageSwitcher from "@/components/ui/LanguageSwitcher";
 
 interface Recording {
   id: string;
@@ -33,9 +37,9 @@ function formatDuration(sec: number | null): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-function formatRecordingDate(d: Date | string): string {
+function formatRecordingDate(d: Date | string, locale: string): string {
   const date = new Date(d);
-  return new Intl.DateTimeFormat("ar-EG", {
+  return new Intl.DateTimeFormat(locale, {
     timeZone: "Africa/Cairo",
     year: "numeric", month: "short", day: "numeric",
     hour: "numeric", minute: "2-digit",
@@ -55,6 +59,10 @@ export default function WaitScreen({
   stationName,
   latestRecordings = [],
 }: WaitScreenProps) {
+  const t = useTranslations('studio.waitScreen');
+  const locale = useLocale();
+  const dir = isRtl(locale) ? 'rtl' : 'ltr';
+  const dateLocale = DATE_LOCALES[locale as keyof typeof DATE_LOCALES] || locale;
   // mounted guard — Date.now() must NOT run during SSR useState init because
   // the server and client execute at different instants, producing different
   // timeLeftMs values → different HH:MM:SS digits → hydration mismatch.
@@ -102,7 +110,7 @@ export default function WaitScreen({
 
 
   return (
-    <div dir="rtl" className="min-h-screen bg-neutral-950 text-neutral-100 font-sans relative overflow-hidden flex flex-col">
+    <div dir={dir} className="min-h-screen bg-neutral-950 text-neutral-100 font-sans relative overflow-hidden flex flex-col">
 
       {/* ambient glow */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -113,9 +121,10 @@ export default function WaitScreen({
       <div className="relative z-20 flex items-center justify-between px-6 pt-5 pb-2">
         <div className="flex items-center gap-2 text-sm text-neutral-500">
           <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse inline-block" />
-          في انتظار موعد البث
+          {t('title')}
         </div>
         <div className="flex items-center gap-2">
+          <LanguageSwitcher />
           <Link
             href="/profile"
             className="flex items-center gap-1.5 text-xs text-neutral-500 hover:text-indigo-300 border border-neutral-800 hover:border-indigo-500/40 rounded-lg px-3 py-2 transition-colors bg-neutral-900/80"
@@ -123,7 +132,7 @@ export default function WaitScreen({
             <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
             </svg>
-            ملفي
+            {t('myProfile')}
           </Link>
           <LogoutButton />
         </div>
@@ -147,34 +156,34 @@ export default function WaitScreen({
             </div>
 
             <p className="text-neutral-500 text-sm font-medium mb-3">
-              {mounted && gateOpen ? "حان موعد الدخول" : "الوقت المتبقي لدخول الاستوديو"}
+              {mounted && gateOpen ? t('gateOpenNow') : t('timeRemaining')}
             </p>
 
             {/* Big digital clock */}
             {mounted && gateOpen ? (
-              <p className="text-4xl font-black tracking-widest text-emerald-400 mb-2">يمكنك الدخول الآن</p>
+              <p className="text-4xl font-black tracking-widest text-emerald-400 mb-2">{t('canEnterNow')}</p>
             ) : (
               <div className="flex items-center justify-center gap-1 mb-2" dir="ltr">
                 <div className="bg-neutral-950 rounded-2xl px-4 py-3 min-w-[72px]">
                   <span className="block text-5xl font-black tabular-nums text-indigo-300">{mounted ? hh : "--"}</span>
-                  <span className="block text-xs text-neutral-600 mt-1">ساعة</span>
+                  <span className="block text-xs text-neutral-600 mt-1">{t('hours')}</span>
                 </div>
                 <span className="text-4xl font-black text-neutral-700 mb-4">:</span>
                 <div className="bg-neutral-950 rounded-2xl px-4 py-3 min-w-[72px]">
                   <span className="block text-5xl font-black tabular-nums text-indigo-300">{mounted ? mm : "--"}</span>
-                  <span className="block text-xs text-neutral-600 mt-1">دقيقة</span>
+                  <span className="block text-xs text-neutral-600 mt-1">{t('minutes')}</span>
                 </div>
                 <span className="text-4xl font-black text-neutral-700 mb-4">:</span>
                 <div className="bg-neutral-950 rounded-2xl px-4 py-3 min-w-[72px]">
                   <span className="block text-5xl font-black tabular-nums text-cyan-400">{mounted ? ss : "--"}</span>
-                  <span className="block text-xs text-neutral-600 mt-1">ثانية</span>
+                  <span className="block text-xs text-neutral-600 mt-1">{t('seconds')}</span>
                 </div>
               </div>
             )}
 
             {allowConnectMinutesBefore > 0 && mounted && !gateOpen && (
               <p className="text-xs text-neutral-600 mt-1">
-                يُفتح الباب قبل البث بـ {allowConnectMinutesBefore} دقيقة
+                {t('earlyAccess', { minutes: allowConnectMinutesBefore })}
               </p>
             )}
 
@@ -191,7 +200,7 @@ export default function WaitScreen({
                     : "bg-neutral-800 text-neutral-600 cursor-not-allowed"
               }`}
             >
-              {isSyncing ? "جاري المزامنة مع الخادم..." : mounted && gateOpen ? "⏎ دخول الاستوديو" : "الاستوديو مغلق حتى يحين الموعد"}
+              {isSyncing ? t('syncing') : mounted && gateOpen ? t('enterStudio') : t('studioClosed')}
             </button>
 
             {/* Manual refresh — check if schedule was updated */}
@@ -201,7 +210,7 @@ export default function WaitScreen({
               onClick={handleEnter}
               className="mt-2 w-full py-2 rounded-xl text-xs text-neutral-500 hover:text-neutral-300 bg-neutral-800/50 hover:bg-neutral-800 border border-neutral-700/40 hover:border-neutral-600 transition-all disabled:opacity-50"
             >
-              ↻ تحديث حالة الجدول
+              {t('refreshSchedule')}
             </button>
 
           </div>
@@ -212,30 +221,30 @@ export default function WaitScreen({
               <div className="pb-3 border-b border-neutral-800 space-y-2">
                 {programTitle && (
                   <div className="flex items-center justify-between">
-                    <span className="text-neutral-500">البرنامج</span>
+                    <span className="text-neutral-500">{t('program')}</span>
                     <span className="font-semibold text-indigo-300">{programTitle}</span>
                   </div>
                 )}
                 {stationName && (
                   <div className="flex items-center justify-between">
-                    <span className="text-neutral-500">المحطة</span>
+                    <span className="text-neutral-500">{t('station')}</span>
                     <span className="text-cyan-300">{stationName}</span>
                   </div>
                 )}
               </div>
             )}
             <div className="flex items-center justify-between">
-              <span className="text-neutral-500">بداية الجلسة</span>
+              <span className="text-neutral-500">{t('sessionStart')}</span>
               <span className="text-neutral-200 font-medium">{nextBroadcastTime}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-neutral-500">نهاية الجلسة</span>
+              <span className="text-neutral-500">{t('sessionEnd')}</span>
               <span className="text-neutral-200 font-medium">{sessionEndTime}</span>
             </div>
             {allowConnectMinutesBefore > 0 && (
               <div className="flex items-center justify-between">
-                <span className="text-neutral-500">فتح الباب قبل الموعد</span>
-                <span className="text-amber-400 font-medium">{allowConnectMinutesBefore} دقيقة</span>
+                <span className="text-neutral-500">{t('gateOpenBefore')}</span>
+                <span className="text-amber-400 font-medium">{t('minutesCount', { count: allowConnectMinutesBefore })}</span>
               </div>
             )}
           </div>
@@ -248,13 +257,13 @@ export default function WaitScreen({
               <svg className="w-4 h-4 text-indigo-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
               </svg>
-              آخر التسجيلات
+              {t('latestRecordings')}
             </h2>
             <Link
               href="/studio/recordings"
               className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors flex items-center gap-1"
             >
-              أرشيف تسجيلاتي
+              {t('myRecordings')}
               <svg className="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="9 18 15 12 9 6"/>
               </svg>
@@ -268,8 +277,8 @@ export default function WaitScreen({
                   <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
                 </svg>
               </div>
-              <p className="text-neutral-500 text-sm">لا توجد تسجيلات بعد.</p>
-              <p className="text-neutral-700 text-xs mt-1">ستظهر هنا بعد أول بثّ.</p>
+              <p className="text-neutral-500 text-sm">{t('noRecordingsYet')}</p>
+              <p className="text-neutral-700 text-xs mt-1">{t('noRecordingsHint')}</p>
             </div>
           ) : (
             <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden">
@@ -284,7 +293,7 @@ export default function WaitScreen({
                   <svg className="w-4 h-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
                   </svg>
-                  عرض كل التسجيلات
+                  {t('viewAllRecordings')}
                 </Link>
               </div>
             </div>

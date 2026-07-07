@@ -49,6 +49,8 @@ export const DEFAULT_SYSTEM_SETTINGS = {
   updatedBy:       null as string | null,
   createdAt:       new Date(0),
   updatedAt:       new Date(0),
+  // i18n
+  defaultLanguage: "ar",
 } as const;
 
 export type SystemSettingsData = typeof DEFAULT_SYSTEM_SETTINGS;
@@ -181,6 +183,15 @@ export async function getSystemName(): Promise<string> {
 export async function buildPageTitle(pageName: string): Promise<string> {
   const name = await getSystemName();
   return `${pageName} — ${name}`;
+}
+
+/**
+ * Get the admin-configured default language code (e.g. 'ar', 'en').
+ * Falls back to 'ar' if DB is unreachable.
+ */
+export async function getDefaultLanguage(): Promise<string> {
+  const s = await getSystemSettings();
+  return (s as any).defaultLanguage || "ar";
 }
 
 // ── Theme CSS injection ───────────────────────────────────────────────────────

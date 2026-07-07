@@ -2,7 +2,9 @@
 
 import { auth, prisma } from "@/auth";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { encrypt } from "@/lib/encryption";
+import { getTranslations } from "next-intl/server";
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 // Converts any string to a URL-safe lowercase slug.
@@ -19,6 +21,7 @@ function toSlug(value: string): string {
 
 // ── createStation ─────────────────────────────────────────────────────────────
 export async function createStation(formData: FormData) {
+  const t = await getTranslations("admin.stations");
   const session = await auth();
   if (!session || (session.user as any).role !== "ADMIN") {
     throw new Error("Unauthorized");
@@ -46,26 +49,26 @@ export async function createStation(formData: FormData) {
   const djAllRequired    = sdcHost && sdcPortRaw && sdcDjUsername && sdcDjPassword;
 
   if (djFieldsProvided.length > 0 && !djAllRequired) {
-    throw new Error("إما اترك بيانات DJ فارغة أو أكملها بالكامل (Host + Port + DJ Username + DJ Password).");
+    throw new Error(t("errIncompleteDj"));
   }
 
   // ── Validate station fields ───────────────────────────────────────────────
-  if (!name) throw new Error("اسم المحطة مطلوب.");
+  if (!name) throw new Error(t("errNameRequired"));
 
   const slug = toSlug(rawSlug || name);
-  if (!slug) throw new Error("Slug غير صالح. استخدم أحرفاً إنجليزية وأرقاماً وشرطات فقط.");
+  if (!slug) throw new Error(t("errSlugInvalid"));
 
   let streamPort: number | null = null;
   if (streamPortRaw && streamPortRaw.trim() !== "") {
     streamPort = parseInt(streamPortRaw, 10);
     if (isNaN(streamPort) || streamPort < 1 || streamPort > 65535) {
-      throw new Error("رقم المنفذ (Port) يجب أن يكون بين 1 و 65535.");
+      throw new Error(t("errPortInvalid"));
     }
   }
 
   // ── Unique slug check ─────────────────────────────────────────────────────
   const existing = await prisma.station.findUnique({ where: { slug } });
-  if (existing) throw new Error(`المحطة بالـ slug "${slug}" موجودة بالفعل.`);
+  if (existing) throw new Error(t("errSlugExists", { slug }));
 
   // ── Validate DJ fields if provided ───────────────────────────────────────
   let sdcPort = 0;
@@ -73,11 +76,11 @@ export async function createStation(formData: FormData) {
   if (djAllRequired) {
     sdcPort = parseInt(sdcPortRaw, 10);
     if (isNaN(sdcPort) || sdcPort < 1 || sdcPort > 65535) {
-      throw new Error("DJ Port يجب أن يكون بين 1 و 65535.");
+      throw new Error(t("errDjPortInvalid"));
     }
     sdcBitrate = parseInt(sdcBitrateRaw, 10);
     if (isNaN(sdcBitrate) || sdcBitrate < 8 || sdcBitrate > 320) {
-      throw new Error("DJ Bitrate يجب أن يكون بين 8 و 320 kbps.");
+      throw new Error(t("errDjBitrateInvalid"));
     }
   }
 
@@ -113,6 +116,7 @@ export async function createStation(formData: FormData) {
 
 // ── toggleStationActive ───────────────────────────────────────────────────────
 export async function toggleStationActive(formData: FormData) {
+  const t = await getTranslations("admin.stations");
   const session = await auth();
   if (!session || (session.user as any).role !== "ADMIN") {
     throw new Error("Unauthorized");
@@ -166,6 +170,7 @@ export async function toggleStationActive(formData: FormData) {
 
 // ── updateStation ─────────────────────────────────────────────────────────────
 export async function updateStation(formData: FormData) {
+  const t = await getTranslations("admin.stations");
   const session = await auth();
   if (!session || (session.user as any).role !== "ADMIN") {
     throw new Error("Unauthorized");
@@ -182,26 +187,26 @@ export async function updateStation(formData: FormData) {
   // ── Validate station exists ───────────────────────────────────────────────
   if (!stationId) throw new Error("Missing stationId.");
   const station = await prisma.station.findUnique({ where: { id: stationId } });
-  if (!station) throw new Error("المحطة غير موجودة.");
+  if (!station) throw new Error(t("errStationNotFound"));
 
   // ── Validate fields ───────────────────────────────────────────────────────
-  if (!name) throw new Error("اسم المحطة مطلوب.");
+  if (!name) throw new Error(t("errNameRequired"));
 
   const slug = toSlug(rawSlug || name);
-  if (!slug) throw new Error("Slug غير صالح. استخدم أحرفاً إنجليزية وأرقاماً وشرطات فقط.");
+  if (!slug) throw new Error(t("errSlugInvalid"));
 
   let streamPort: number | null = null;
   if (streamPortRaw && streamPortRaw.trim() !== "") {
     streamPort = parseInt(streamPortRaw, 10);
     if (isNaN(streamPort) || streamPort < 1 || streamPort > 65535) {
-      throw new Error("رقم المنفذ (Port) يجب أن يكون بين 1 و 65535.");
+      throw new Error(t("errPortInvalid"));
     }
   }
 
   // ── Duplicate slug check (excluding current station) ─────────────────────
   const slugConflict = await prisma.station.findUnique({ where: { slug } });
   if (slugConflict && slugConflict.id !== stationId) {
-    throw new Error(`المحطة بالـ slug "${slug}" موجودة بالفعل.`);
+    throw new Error(t("errSlugExists", { slug }));
   }
 
   // ── Update ────────────────────────────────────────────────────────────────
@@ -211,6 +216,7 @@ export async function updateStation(formData: FormData) {
   });
 
   revalidatePath("/admin/stations");
+  redirect(`/admin/stations?edit=${stationId}&updated=1`);
 }
 
 // ── updateStationDefaultCredential ───────────────────────────────────────────
@@ -218,6 +224,7 @@ export async function updateStation(formData: FormData) {
 // Used as priority-3 fallback when a presenter has no per-station credential.
 // Password field: if blank on update, the existing encryptedPassword is kept.
 export async function updateStationDefaultCredential(formData: FormData) {
+  const t = await getTranslations("admin.stations");
   const session = await auth();
   if (!session || (session.user as any).role !== "ADMIN") {
     throw new Error("Unauthorized");
@@ -236,20 +243,20 @@ export async function updateStationDefaultCredential(formData: FormData) {
   // ── Validate station ──────────────────────────────────────────────────────
   if (!stationId) throw new Error("Missing stationId.");
   const station = await prisma.station.findUnique({ where: { id: stationId } });
-  if (!station)  throw new Error("المحطة غير موجودة.");
+  if (!station)  throw new Error(t("errStationNotFound"));
 
   // ── Validate required DJ fields ───────────────────────────────────────────
-  if (!host)       throw new Error("Host مطلوب.");
-  if (!djUsername) throw new Error("DJ Username مطلوب.");
+  if (!host)       throw new Error(t("errHostRequired"));
+  if (!djUsername) throw new Error(t("errDjUsernameRequired"));
 
   const port = parseInt(portRaw, 10);
   if (isNaN(port) || port < 1 || port > 65535) {
-    throw new Error("Port يجب أن يكون بين 1 و 65535.");
+    throw new Error(t("errPortInvalid2"));
   }
 
   const bitrate = parseInt(bitrateRaw, 10);
   if (isNaN(bitrate) || bitrate < 8 || bitrate > 320) {
-    throw new Error("Bitrate يجب أن يكون بين 8 و 320 kbps.");
+    throw new Error(t("errBitrateInvalid"));
   }
 
   // ── Resolve encryptedPassword ──────────────────────────────────────────────
@@ -266,7 +273,7 @@ export async function updateStationDefaultCredential(formData: FormData) {
     encryptedPassword = existing.encryptedPassword;
   } else {
     // New record with no password — reject
-    throw new Error("DJ Password مطلوب عند إنشاء بيانات DJ لأول مرة.");
+    throw new Error(t("errDjPasswordRequired"));
   }
 
   // ── Upsert ────────────────────────────────────────────────────────────────
@@ -280,4 +287,35 @@ export async function updateStationDefaultCredential(formData: FormData) {
 
   const { redirect } = await import("next/navigation");
   redirect(`/admin/stations?edit=${stationId}&updated=1&dj=1`);
+}
+
+export async function updateStationMessaging(formData: FormData) {
+  const session = await auth();
+  if (!session || (session.user as any).role !== "ADMIN") {
+    throw new Error("Unauthorized");
+  }
+
+  const stationId              = (formData.get("stationId") as string | null)?.trim() ?? "";
+  const isMessagingEnabled     = formData.get("isMessagingEnabled") === "on";
+  const iframeTextColor        = (formData.get("iframeTextColor") as string | null)?.trim() || null;
+  const iframeBgColor          = (formData.get("iframeBgColor") as string | null)?.trim() || null;
+  const iframeBorderColor      = (formData.get("iframeBorderColor") as string | null)?.trim() || null;
+  const iframePlaceholderColor = (formData.get("iframePlaceholderColor") as string | null)?.trim() || null;
+  const iframeLanguage         = (formData.get("iframeLanguage") as string | null)?.trim() || "ar";
+
+  if (!stationId) throw new Error("Station ID required");
+
+  await prisma.station.update({
+    where: { id: stationId },
+    data:  {
+      isMessagingEnabled,
+      iframeTextColor,
+      iframeBgColor,
+      iframeBorderColor,
+      iframePlaceholderColor,
+      iframeLanguage
+    },
+  });
+
+  redirect(`/admin/stations?edit=${stationId}&updated=msg`);
 }

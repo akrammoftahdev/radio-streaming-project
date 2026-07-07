@@ -189,6 +189,7 @@ function isCancelledByException(
 export async function resolveCurrentOrNextProgramSession(
   userId: string,
   now: Date,
+  stationId?: string
 ): Promise<ProgramSession | null> {
   // Window = today..+14 days in the rule timezone (Africa/Cairo).
   // IMPORTANT: Do NOT use new Date(toLocaleString()) + setHours() — that approach
@@ -221,6 +222,7 @@ export async function resolveCurrentOrNextProgramSession(
     where: {
       presenterId: userId,
       isActive: true,
+      ...(stationId ? { stationId } : {}),
       station: { isActive: true },
     },
     include: {

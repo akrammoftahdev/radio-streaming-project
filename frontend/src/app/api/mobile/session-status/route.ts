@@ -55,7 +55,7 @@ export async function GET(req: Request) {
 
     // Resolve current session
     const now = new Date();
-    const session = await resolveCurrentOrNextProgramSession(presenterId, now);
+    const session = await resolveCurrentOrNextProgramSession(presenterId, now, stationId);
 
     if (!session || session.stationId !== stationId) {
       return NextResponse.json({

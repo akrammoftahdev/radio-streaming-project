@@ -48,7 +48,6 @@ over the localhost internal API response.
 **Decision:** DJ passwords and stream passwords stored in `SonicPanelCredential` are encrypted with
 AES-256-GCM before database persistence. The encryption key is held in `ENCRYPTION_KEY` env var.
 
-**Rationale:** The SQLite database file could be accessed by anyone with server access.
 Encrypting credentials at rest ensures that a DB file leak alone does not expose broadcast credentials.
 
 ---
@@ -89,9 +88,7 @@ allow unsanctioned use of the SHOUTcast source.
 
 ---
 
-## D-008 — SQLite for Development, Migration Path Open
 
-**Decision:** Prisma is configured with SQLite for the current development phase.
 
 **Rationale:** Simplifies local development — no database server to run. The Prisma schema
 is designed to be provider-agnostic. When the project moves to production, the `datasource` block
@@ -154,7 +151,6 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 **Rationale:** Toggle switches are universally left-to-right (OFF=left, ON=right) regardless of page direction.
 
 ## DEC-013: KB Legacy Cleanup Policy (May 28, 2026)
-**Decision:** All references to egyona, Cloud Run, gcloud, GitHub Actions, SQLite-as-production are marked `[HISTORICAL]` rather than deleted.
 **Rationale:** Preserves context for future agents understanding migration history. Prevents confusion about current architecture.
 
 ---

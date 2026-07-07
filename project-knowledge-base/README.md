@@ -46,7 +46,6 @@ Failure to update these files leaves the project in an undocumented state and cr
 - **Product:** EGONAIR Remote Studio
 - **Language:** Arabic UI (RTL), English code
 - **Audience:** Radio station — Admin + Presenters (مذيعون)
-- **Stack:** Next.js 15 (App Router) + Prisma/SQLite + custom Node.js WebSocket service + FFmpeg + SHOUTcast
 
 ---
 

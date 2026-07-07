@@ -154,32 +154,54 @@ export default function StudioScreen() {
 
   // ── Session-end watchdog ─────────────────────────────────────────────────
   useEffect(() => {
-    if (!sessionEndTime || !isOnAir) return;
+    if (!isOnAir) {
+      setSessionWarning(false);
+      setSessionTimeLeft(null);
+      return;
+    }
 
-    const endMs = new Date(sessionEndTime).getTime();
+    const checkSession = async () => {
+      try {
+        const res = await api.get(`/mobile/session-status?stationId=${stationId}`);
+        const data = res.data;
 
-    const interval = setInterval(() => {
-      const remaining = Math.floor((endMs - Date.now()) / 1000);
-      setSessionTimeLeft(remaining);
+        if (data.active) {
+          const remainingSec = Math.floor(data.remainingMs / 1000);
+          setSessionTimeLeft(remainingSec);
+          if (remainingSec <= 60 && remainingSec > 0) {
+            setSessionWarning(true);
+          } else {
+            setSessionWarning(false);
+          }
+        } else {
+          // DIRECT_DJ mode has no session end
+          if (data.reason === 'DIRECT_DJ') {
+            setSessionWarning(false);
+            setSessionTimeLeft(null);
+            return;
+          }
 
-      if (remaining <= 60 && remaining > 0) {
-        setSessionWarning(true);
-      } else if (remaining <= 0) {
-        // Auto-disconnect
-        console.log('[WATCHDOG] Session ended — auto-disconnecting');
-        setSessionWarning(false);
-        stopAll();
-        Alert.alert(
-          'انتهى وقت البث',
-          'تم قطع الاتصال تلقائياً لأن وقت برنامجك انتهى.',
-          [{ text: 'حسناً', onPress: () => router.back() }]
-        );
-        clearInterval(interval);
+          // Session actually ended or doesn't exist
+          console.log('[WATCHDOG] Session ended — auto-disconnecting. Reason:', data.reason);
+          setSessionWarning(false);
+          stopAll();
+          Alert.alert(
+            'انتهى وقت البث',
+            'تم قطع الاتصال تلقائياً لأن وقت برنامجك انتهى.',
+            [{ text: 'حسناً', onPress: () => router.back() }]
+          );
+        }
+      } catch (e) {
+        console.error('[WATCHDOG] Failed to check session status:', e);
       }
-    }, 1000);
+    };
+
+    // Initial check and then interval
+    checkSession();
+    const interval = setInterval(checkSession, 10000); // Check every 10s
 
     return () => clearInterval(interval);
-  }, [sessionEndTime, isOnAir]);
+  }, [isOnAir, stationId, router, stopAll]);
 
   // ── Cleanup on unmount ───────────────────────────────────────────────────
   useEffect(() => {

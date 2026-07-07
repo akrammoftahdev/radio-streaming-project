@@ -5,17 +5,22 @@ import { signOut } from "@/auth";
 import { Unauthorized } from "@/components/ui/Unauthorized";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { EmptyState }  from "@/components/ui/EmptyState";
+import LanguageSwitcher from "@/components/ui/LanguageSwitcher";
+import { getTranslations } from "next-intl/server";
+import { getLocale } from "next-intl/server";
+import { isRtl } from "@/i18n/config";
 
 // Force dynamic so counts and DJ status are always fresh.
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "لوحة مدير المحطة - EGONAIR",
-};
+export async function generateMetadata() {
+  const t = await getTranslations("stationManager.dashboard");
+  return { title: `${t("title")} - ${t("subtitle")}` };
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface StationCard {
+interface StationCardProps {
   id: string;
   name: string;
   slug: string;
@@ -31,7 +36,7 @@ interface StationCard {
 
 // ── Data fetch ────────────────────────────────────────────────────────────────
 
-async function getManagerStations(managerId: string): Promise<StationCard[]> {
+async function getManagerStations(managerId: string): Promise<StationCardProps[]> {
   const assignments = await prisma.stationManagerAssignment.findMany({
     where: { managerId, isActive: true },
     include: {
@@ -72,14 +77,16 @@ async function getManagerStations(managerId: string): Promise<StationCard[]> {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default async function StationManagerDashboard() {
+  const t = await getTranslations("stationManager.dashboard");
+  const tl = await getTranslations("LiveMessaging");
+  const locale = await getLocale();
+  const dir = isRtl(locale) ? "rtl" : "ltr";
+
   // Auth guard
   const session = await auth();
   if (!session?.user) redirect("/login");
 
   const role = (session.user as any)?.role as string | undefined;
-  // Wrong role: render Unauthorized instead of redirecting to /login.
-  // Redirecting to /login creates a loop because /login immediately
-  // redirects authenticated users back to their role-home page.
   if (role !== "STATION_MANAGER") {
     return <Unauthorized role={role ?? ""} />;
   }
@@ -87,7 +94,7 @@ export default async function StationManagerDashboard() {
   const managerId  = (session.user as any)?.id   as string;
   const managerName = session.user.name ?? session.user.email ?? "مدير المحطة";
 
-  let stations: StationCard[] = [];
+  let stations: StationCardProps[] = [];
   let fetchError = false;
   try {
     stations = await getManagerStations(managerId);
@@ -102,7 +109,7 @@ export default async function StationManagerDashboard() {
 
   return (
     <div
-      dir="rtl"
+      dir={dir}
       className="min-h-screen bg-slate-950 text-slate-100"
       style={{ fontFamily: "'Cairo','Segoe UI',system-ui,sans-serif" }}
     >
@@ -123,27 +130,27 @@ export default async function StationManagerDashboard() {
             </div>
             <div>
               <h1 className="text-base font-bold text-slate-100 leading-tight">
-                لوحة مدير المحطة
+                {t("title")}
               </h1>
-              <p className="text-xs text-slate-500">EGONAIR</p>
+              <p className="text-xs text-slate-500">{t("subtitle")}</p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="hidden sm:block text-right">
-              <p className="text-xs text-slate-500">مرحباً،</p>
+            <LanguageSwitcher />
+            
+            <div className="hidden sm:block ltr:text-left rtl:text-right px-2">
+              <p className="text-xs text-slate-500">{t("hello")}</p>
               <p className="text-sm font-semibold max-w-[160px] truncate" style={{ color: "var(--eg-primary)" }}>{managerName}</p>
             </div>
             <Link
               href="/profile"
-              className="flex items-center gap-1.5 text-xs text-slate-400 border border-slate-700 rounded-lg px-3 py-2 transition-colors"
-              onMouseEnter={e => { e.currentTarget.style.color = "var(--eg-primary)"; e.currentTarget.style.borderColor = "color-mix(in srgb, var(--eg-primary) 40%, transparent)"; }}
-              onMouseLeave={e => { e.currentTarget.style.color = ""; e.currentTarget.style.borderColor = ""; }}
+              className="flex items-center gap-1.5 text-xs text-slate-400 border border-slate-700 rounded-lg px-3 py-2 transition-colors hover:text-[var(--eg-primary)] hover:border-[var(--eg-primary)]"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
               </svg>
-              ملفي
+              {t("profile")}
             </Link>
             <form
               action={async () => {
@@ -158,7 +165,7 @@ export default async function StationManagerDashboard() {
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                   <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
                 </svg>
-                خروج
+                {t("logout")}
               </button>
             </form>
           </div>
@@ -173,27 +180,27 @@ export default async function StationManagerDashboard() {
           style={{ background: "linear-gradient(to bottom right, color-mix(in srgb, var(--eg-primary) 15%, transparent), color-mix(in srgb, var(--eg-accent) 10%, transparent))", borderColor: "color-mix(in srgb, var(--eg-primary) 20%, transparent)" }}
         >
           <h2 className="text-xl font-bold text-slate-100 mb-1">
-            مرحباً، {managerName} 👋
+            {t("welcome", { name: managerName })}
           </h2>
           <p className="text-sm text-slate-400">
-            تعرض هذه اللوحة المحطات المسندة إليك فقط. لا يمكنك الوصول إلى بيانات المحطات الأخرى أو لوحة الإدارة العامة.
+            {t("welcomeDesc")}
           </p>
         </div>
 
         {/* ── Summary stat row (only when stations exist) ── */}
         {!fetchError && stations.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <SummaryCard icon="📡" label="المحطات المُسندة"    value={stations.length}   color="teal"   />
-            <SummaryCard icon="🎙️" label="إجمالي المذيعين"    value={totalPresenters}   color="indigo" />
-            <SummaryCard icon="📺" label="إجمالي البرامج"     value={totalPrograms}     color="purple" />
-            <SummaryCard icon="🗂️" label="إجمالي التسجيلات"  value={totalRecordings}   color="amber"  />
+            <SummaryCard icon="📡" label={t("assignedStations")}  value={stations.length}   color="teal"   />
+            <SummaryCard icon="🎙️" label={t("totalPresenters")} value={totalPresenters}   color="indigo" />
+            <SummaryCard icon="📺" label={t("totalPrograms")}   value={totalPrograms}     color="purple" />
+            <SummaryCard icon="🗂️" label={t("totalRecordings")} value={totalRecordings}   color="amber"  />
           </div>
         )}
 
         {/* ── Error state ── */}
         {fetchError && (
           <div className="bg-red-950/40 border border-red-500/30 rounded-2xl p-8 text-center text-red-400 text-sm">
-            حدث خطأ أثناء تحميل البيانات. حاول تحديث الصفحة.
+            {t("fetchError")}
           </div>
         )}
 
@@ -202,12 +209,12 @@ export default async function StationManagerDashboard() {
           <div className="bg-slate-900 border border-slate-700/50 rounded-2xl overflow-hidden">
             <EmptyState
               icon="📭"
-              title="لا توجد محطات مسندة لهذا الحساب"
-              description="تواصل مع الإدارة لتفعيل المحطات المرتبطة بحسابك."
+              title={t("noStationsTitle")}
+              description={t("noStationsDesc")}
               action={
                 <form action={async () => { "use server"; await signOut({ redirectTo: "/login" }); }}>
                   <button type="submit" className="text-sm text-slate-400 hover:text-red-400 border border-slate-700 hover:border-red-500/30 rounded-lg px-4 py-2 transition-colors">
-                    تسجيل الخروج
+                    {t("logoutFull")}
                   </button>
                 </form>
               }
@@ -220,11 +227,11 @@ export default async function StationManagerDashboard() {
           <>
             <div>
               <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-widest mb-4">
-                محطاتك المُسندة
+                {t("yourAssignedStations")}
               </h3>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {stations.map((st) => (
-                  <StationCard key={st.id} station={st} />
+                  <StationCard key={st.id} station={st} t={t} tl={tl} />
                 ))}
               </div>
             </div>
@@ -262,7 +269,7 @@ function SummaryCard({
 
 // ── Station card ──────────────────────────────────────────────────────────────
 
-function StationCard({ station: s }: { station: StationCard }) {
+function StationCard({ station: s, t, tl }: { station: StationCardProps; t: any; tl: any }) {
   const streamInfo = s.streamHost
     ? `${s.streamHost}${s.streamPort ? `:${s.streamPort}` : ""}`
     : null;
@@ -285,7 +292,7 @@ function StationCard({ station: s }: { station: StationCard }) {
           </div>
         </div>
         <StatusBadge
-          label={s.isActive ? "نشطة" : "معطّلة"}
+          label={s.isActive ? t("active") : t("inactive")}
           variant={s.isActive ? "success" : "neutral"}
           dot
           className="flex-shrink-0"
@@ -317,8 +324,8 @@ function StationCard({ station: s }: { station: StationCard }) {
         <StatusBadge
           label={
             s.hasDjCredential
-              ? "بيانات DJ الافتراضية مُعدة"
-              : "بيانات DJ الافتراضية غير مُعدة"
+              ? t("djCredsSet")
+              : t("djCredsNotSet")
           }
           variant={s.hasDjCredential ? "success" : "warning"}
           dot
@@ -327,21 +334,22 @@ function StationCard({ station: s }: { station: StationCard }) {
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
-        <StatBadge icon="🎙️" label="المذيعون"   value={s.presentersCount}  color="indigo" />
-        <StatBadge icon="📺" label="البرامج"    value={s.programsCount}    color="purple" />
-        <StatBadge icon="🗂️" label="التسجيلات" value={s.recordingsCount}  color="amber"  />
+        <StatBadge icon="🎙️" label={t("presenters")} value={s.presentersCount} color="indigo" />
+        <StatBadge icon="📺" label={t("programs")}   value={s.programsCount}   color="purple" />
+        <StatBadge icon="🗂️" label={t("recordings")} value={s.recordingsCount} color="amber"  />
       </div>
 
       {/* Action cards */}
       <div>
-        <p className="text-xs text-slate-600 mb-2 font-medium">الإجراءات</p>
+        <p className="text-xs text-slate-600 mb-2 font-medium">{t("actions")}</p>
         <div className="grid grid-cols-2 gap-2">
-          <ActionLink href="/station-manager/presenters" icon="🎙️" label="مذيعو المحطة" />
-          <ActionLink href="/station-manager/programs"   icon="📺" label="برامج المحطة" />
-          <ActionLink href="/station-manager/recordings" icon="🗂️" label="تسجيلات المحطة" />
-          <ActionLink href="/station-manager/dj-settings" icon="⚙️" label="إعدادات DJ" />
-          <ActionLink href="/station-manager/media"      icon="🎵" label="مكتبة الوسائط" />
-          <ActionLink href="/station-manager/schedule"   icon="📅" label="جدول المحطة" />
+          <ActionLink href="/station-manager/presenters" icon="🎙️" label={t("actionPresenters")} t={t} />
+          <ActionLink href="/station-manager/programs"   icon="📺" label={t("actionPrograms")} t={t} />
+          <ActionLink href="/station-manager/recordings" icon="🗂️" label={t("actionRecordings")} t={t} />
+          <ActionLink href="/station-manager/dj-settings" icon="⚙️" label={t("actionDj")} t={t} />
+          <ActionLink href="/station-manager/media"      icon="🎵" label={t("actionMedia")} t={t} />
+          <ActionLink href={`/admin/stations/${s.id}/inbox`} icon="📥" label={tl("inbox")} t={t} />
+          <ActionLink href="/station-manager/schedule"   icon="📅" label={t("actionSchedule")} t={t} />
         </div>
       </div>
     </div>
@@ -373,36 +381,36 @@ function StatBadge({
 }
 
 function ActionLink({
-  href, icon, label, className = "",
+  href, icon, label, className = "", t,
 }: {
   href: string;
   icon: string;
   label: string;
   className?: string;
+  t: any;
 }) {
   return (
     <Link
       href={href}
-      className={`flex items-center gap-2 border rounded-xl px-3 py-2.5 transition-colors group ${className}`}
+      className={`flex items-center gap-2 border rounded-xl px-3 py-2.5 transition-colors group hover:bg-[var(--eg-primary)]/20 hover:border-[var(--eg-primary)]/40 ${className}`}
       style={{ background: "color-mix(in srgb, var(--eg-primary) 10%, transparent)", borderColor: "color-mix(in srgb, var(--eg-primary) 20%, transparent)" }}
-      onMouseEnter={e => { e.currentTarget.style.background = "color-mix(in srgb, var(--eg-primary) 20%, transparent)"; e.currentTarget.style.borderColor = "color-mix(in srgb, var(--eg-primary) 40%, transparent)"; }}
-      onMouseLeave={e => { e.currentTarget.style.background = "color-mix(in srgb, var(--eg-primary) 10%, transparent)"; e.currentTarget.style.borderColor = "color-mix(in srgb, var(--eg-primary) 20%, transparent)"; }}
     >
       <span className="text-sm">{icon}</span>
       <div>
         <div className="text-xs font-medium transition-colors" style={{ color: "var(--eg-primary)" }}>{label}</div>
-        <div className="text-[10px]" style={{ color: "var(--eg-accent)" }}>فتح</div>
+        <div className="text-[10px]" style={{ color: "var(--eg-accent)" }}>{t("open")}</div>
       </div>
     </Link>
   );
 }
 
 function ActionPlaceholder({
-  icon, label, className = "",
+  icon, label, className = "", t,
 }: {
   icon: string;
   label: string;
   className?: string;
+  t: any;
 }) {
   return (
     <div
@@ -411,7 +419,7 @@ function ActionPlaceholder({
       <span className="text-sm">{icon}</span>
       <div>
         <div className="text-xs font-medium text-slate-400">{label}</div>
-        <div className="text-[10px] text-slate-600">قريبًا</div>
+        <div className="text-[10px] text-slate-600">{t("comingSoon")}</div>
       </div>
     </div>
   );

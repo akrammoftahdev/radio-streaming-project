@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { updateStationPresenter, changePresenterPassword, deactivatePresenter } from "./actions";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { useTranslations } from "next-intl";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -27,6 +28,7 @@ interface Props {
 // ── PresenterCard ─────────────────────────────────────────────────────────────
 
 export function PresenterCard({ presenter: p, assignedStationIds }: Props) {
+  const t = useTranslations("stationManager.presenters");
   const [panel, setPanel] = useState<"none" | "edit" | "pw">("none");
   const [msg, setMsg]     = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [busy, setBusy]   = useState(false);
@@ -38,9 +40,6 @@ export function PresenterCard({ presenter: p, assignedStationIds }: Props) {
   const visibleLinks  = p.stationLinks.filter((l) => assignedSet.has(l.stationId));
   const primaryLink   = visibleLinks.find((l) => l.linkActive) ?? visibleLinks[0];
 
-
-
-
   // ── Action handlers ─────────────────────────────────────────────────────────
 
   async function handleUpdate(e: React.FormEvent<HTMLFormElement>) {
@@ -50,7 +49,7 @@ export function PresenterCard({ presenter: p, assignedStationIds }: Props) {
     const res = await updateStationPresenter(fd);
     setBusy(false);
     if (res.error) setMsg({ type: "err", text: res.error });
-    else { setMsg({ type: "ok", text: "تم تعديل بيانات المذيع بنجاح." }); setPanel("none"); }
+    else { setMsg({ type: "ok", text: t("cardUpdateSuccess") }); setPanel("none"); }
   }
 
   async function handlePassword(e: React.FormEvent<HTMLFormElement>) {
@@ -60,7 +59,7 @@ export function PresenterCard({ presenter: p, assignedStationIds }: Props) {
     const res = await changePresenterPassword(fd);
     setBusy(false);
     if (res.error) setMsg({ type: "err", text: res.error });
-    else { setMsg({ type: "ok", text: "تم تغيير كلمة مرور المذيع بنجاح." }); setPanel("none"); }
+    else { setMsg({ type: "ok", text: t("cardPwSuccess") }); setPanel("none"); }
   }
 
   async function handleDeactivate() {
@@ -69,7 +68,7 @@ export function PresenterCard({ presenter: p, assignedStationIds }: Props) {
     const res = await deactivatePresenter(p.id, primaryLink.stationId);
     setBusy(false);
     if (res.error) setMsg({ type: "err", text: res.error });
-    else setMsg({ type: "ok", text: "تم تعطيل الوصول بنجاح." });
+    else setMsg({ type: "ok", text: t("cardDeactivateSuccess") });
   }
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -91,12 +90,12 @@ export function PresenterCard({ presenter: p, assignedStationIds }: Props) {
           <div className="flex items-center gap-2 flex-wrap mb-1">
             <span className="font-semibold text-slate-100">{p.name ?? p.username}</span>
             <StatusBadge
-              label={p.presenterMode === "MULTI_STATION" ? "متعدد المحطات" : "محطة واحدة"}
+              label={p.presenterMode === "MULTI_STATION" ? t("multiStation") : t("singleStation")}
               variant={p.presenterMode === "MULTI_STATION" ? "info" : "neutral"}
               dot
             />
             <StatusBadge
-              label={p.isActive ? "نشط" : "معطّل"}
+              label={p.isActive ? t("active") : t("inactive")}
               variant={p.isActive ? "success" : "neutral"}
               dot
             />
@@ -105,7 +104,7 @@ export function PresenterCard({ presenter: p, assignedStationIds }: Props) {
             {p.username}{p.email ? ` · ${p.email}` : ""}{p.phone ? ` · ${p.phone}` : ""}
           </p>
           {isMulti && (
-            <p className="text-[10px] text-purple-400/70 mb-1.5">يمكنك إدارة وصوله لهذه المحطة فقط</p>
+            <p className="text-[10px] text-purple-400/70 mb-1.5">{t("manageAccessOnly")}</p>
           )}
           <div className="flex flex-wrap gap-1.5">
             {visibleLinks.map((l) => (
@@ -124,11 +123,9 @@ export function PresenterCard({ presenter: p, assignedStationIds }: Props) {
             <>
               <button
                 onClick={() => setPanel(panel === "edit" ? "none" : "edit")}
-                className="text-xs border rounded-lg px-3 py-1.5 transition-colors"
-                style={panel === "edit" ? { color: "var(--eg-primary)", borderColor: "color-mix(in srgb, var(--eg-primary) 50%, transparent)", background: "color-mix(in srgb, var(--eg-primary) 10%, transparent)" } : { color: "var(--slate-400)", borderColor: "var(--slate-700)" }}
-                onMouseEnter={e => { if(panel !== "edit") { e.currentTarget.style.color = "var(--eg-primary)"; e.currentTarget.style.borderColor = "color-mix(in srgb, var(--eg-primary) 40%, transparent)"; } }}
-                onMouseLeave={e => { if(panel !== "edit") { e.currentTarget.style.color = ""; e.currentTarget.style.borderColor = ""; } }}>
-                {panel === "edit" ? "▲ إغلاق" : "✏️ تعديل"}
+                className="text-xs border rounded-lg px-3 py-1.5 transition-colors hover:text-[var(--eg-primary)] hover:border-[var(--eg-primary)]"
+                style={panel === "edit" ? { color: "var(--eg-primary)", borderColor: "color-mix(in srgb, var(--eg-primary) 50%, transparent)", background: "color-mix(in srgb, var(--eg-primary) 10%, transparent)" } : { color: "var(--slate-400)", borderColor: "var(--slate-700)" }}>
+                {panel === "edit" ? t("close") : t("edit")}
               </button>
               <button
                 onClick={() => setPanel(panel === "pw" ? "none" : "pw")}
@@ -137,7 +134,7 @@ export function PresenterCard({ presenter: p, assignedStationIds }: Props) {
                     ? "text-amber-300 border-amber-500/50 bg-amber-950/40"
                     : "text-slate-400 hover:text-amber-300 border-slate-700 hover:border-amber-500/40"
                 }`}>
-                {panel === "pw" ? "▲ إغلاق" : "🔑 كلمة المرور"}
+                {panel === "pw" ? t("close") : t("passwordBtn")}
               </button>
             </>
           )}
@@ -146,7 +143,7 @@ export function PresenterCard({ presenter: p, assignedStationIds }: Props) {
               onClick={handleDeactivate}
               disabled={busy}
               className="text-xs text-orange-400 hover:text-orange-300 border border-orange-700/30 hover:border-orange-500/50 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50">
-              {isSingle ? "🚫 تعطيل المذيع" : "🚫 إزالة من المحطة"}
+              {isSingle ? t("disableBtn") : t("removeBtn")}
             </button>
           )}
         </div>
@@ -155,29 +152,27 @@ export function PresenterCard({ presenter: p, assignedStationIds }: Props) {
       {/* ── Edit panel ── */}
       {panel === "edit" && isSingle && primaryLink && (
         <div className="border-t border-slate-700/50 bg-slate-800/40 px-5 py-5">
-          <h3 className="text-sm font-semibold mb-4" style={{ color: "var(--eg-primary)" }}>تعديل بيانات المذيع</h3>
+          <h3 className="text-sm font-semibold mb-4" style={{ color: "var(--eg-primary)" }}>{t("editData")}</h3>
           <form onSubmit={handleUpdate} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <input type="hidden" name="presenterId" value={p.id} />
             <input type="hidden" name="stationId"   value={primaryLink.stationId} />
-            <FField label="الاسم الكامل"      name="name"  type="text"  defaultValue={p.name ?? ""} />
-            <FField label="البريد الإلكتروني" name="email" type="email" defaultValue={p.email ?? ""} dir="ltr" />
-            <FField label="رقم الهاتف"         name="phone" type="text"  defaultValue={p.phone ?? ""} dir="ltr" />
+            <FField label={t("fullName")}      name="name"  type="text"  defaultValue={p.name ?? ""} />
+            <FField label={t("email")}         name="email" type="email" defaultValue={p.email ?? ""} dir="ltr" />
+            <FField label={t("phone")}         name="phone" type="text"  defaultValue={p.phone ?? ""} dir="ltr" />
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1">الحالة</label>
+              <label className="block text-xs font-medium text-slate-400 mb-1">{t("status")}</label>
               <select name="isActive" defaultValue={p.isActive ? "true" : "false"}
-                className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-slate-100 outline-none transition-colors"
-                onFocus={e => { e.currentTarget.style.borderColor = "var(--eg-primary)"; }}
-                onBlur={e  => { e.currentTarget.style.borderColor = "var(--eg-border)"; }}
+                className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-slate-100 outline-none transition-colors hover:border-[var(--eg-primary)] focus:border-[var(--eg-primary)]"
                 style={{ borderColor: "var(--eg-border)" }}>
-                <option value="true">نشط</option>
-                <option value="false">معطّل</option>
+                <option value="true">{t("active")}</option>
+                <option value="false">{t("inactive")}</option>
               </select>
             </div>
             <div className="sm:col-span-2 flex justify-end">
               <button type="submit" disabled={busy}
                 className="disabled:opacity-50 text-white font-semibold text-sm rounded-xl px-5 py-2.5 transition-colors"
                 style={{ background: "var(--eg-primary)" }}>
-                {busy ? "جارٍ الحفظ..." : "حفظ التعديلات"}
+                {busy ? t("saving") : t("saveChanges")}
               </button>
             </div>
           </form>
@@ -187,16 +182,16 @@ export function PresenterCard({ presenter: p, assignedStationIds }: Props) {
       {/* ── Password panel ── */}
       {panel === "pw" && isSingle && primaryLink && (
         <div className="border-t border-slate-700/50 bg-slate-800/40 px-5 py-5">
-          <h3 className="text-sm font-semibold text-amber-300 mb-4">تغيير كلمة المرور</h3>
+          <h3 className="text-sm font-semibold text-amber-300 mb-4">{t("changePw")}</h3>
           <form onSubmit={handlePassword} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <input type="hidden" name="presenterId" value={p.id} />
             <input type="hidden" name="stationId"   value={primaryLink.stationId} />
-            <FField label="كلمة المرور الجديدة *"  name="newPassword"     type="password" placeholder="6 أحرف على الأقل" dir="ltr" required />
-            <FField label="تأكيد كلمة المرور *"    name="confirmPassword" type="password" placeholder="أعد الإدخال" dir="ltr" required />
+            <FField label={t("newPw")}     name="newPassword"     type="password" placeholder={t("pwMin")} dir="ltr" required />
+            <FField label={t("confirmPw")} name="confirmPassword" type="password" placeholder={t("reEnter")} dir="ltr" required />
             <div className="sm:col-span-2 flex justify-end">
               <button type="submit" disabled={busy}
                 className="bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-semibold text-sm rounded-xl px-5 py-2.5 transition-colors">
-                {busy ? "جارٍ التغيير..." : "تغيير كلمة المرور"}
+                {busy ? t("changing") : t("changePw")}
               </button>
             </div>
           </form>
@@ -217,9 +212,7 @@ function FField({ label, name, type, placeholder, defaultValue, dir: d, required
       <label className="block text-xs font-medium text-slate-400 mb-1">{label}</label>
       <input name={name} type={type} placeholder={placeholder} defaultValue={defaultValue}
         dir={d} required={required}
-        className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition-colors"
-        onFocus={e => { e.currentTarget.style.borderColor = "var(--eg-primary)"; }}
-        onBlur={e  => { e.currentTarget.style.borderColor = "var(--eg-border)"; }}
+        className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-600 outline-none transition-colors hover:border-[var(--eg-primary)] focus:border-[var(--eg-primary)]"
         style={{ borderColor: "var(--eg-border)" }} />
     </div>
   );

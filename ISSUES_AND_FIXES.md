@@ -42,3 +42,22 @@ cd frontend && npm run dev
 ```
 
 Then navigate to: http://localhost:3000/stream/login
+
+## 2026-05-31: Next.js Server Actions Form Submission Fix
+- **Issue**: Form submission for 'Add Admin' and 'Edit Admin' silently failed when a file input (`<input type="file">`) was added.
+- **Cause**: In Next.js App Router Server Actions, if a form contains a file input but lacks `encType="multipart/form-data"`, the React client-side polyfill crashes or fails to serialize the form, resulting in silent submission failures (no network request made).
+- **Fix**: Added `encType="multipart/form-data"` to both forms in `/frontend/src/app/admin/admins/page.tsx`.
+- **Secondary Issue**: 'Edit' and 'Delete' links in the admins table failed to open the side panels reliably.
+- **Cause**: Using `<Link>` for query-parameter-only navigation (e.g., `?edit=123`) triggered Next.js shallow routing/caching, meaning the Server Component didn't re-render to show the panel.
+- **Fix**: Reverted `<Link>` back to standard HTML `<a>` tags to enforce hard server renders for search parameter changes.
+
+## 2026-07-04: VPS Recordings Directory Mismatch
+- **Issue**: Recordings from `backend-audio` were successfully generated but resulted in a "File not found" error when attempting to play or download them via the frontend dashboard.
+- **Cause**: A leftover deployment template assumed a Google Cloud architecture (`GCS_BUCKET`, Cloud Run URL) and set `RECORDINGS_BASE_DIR=/tmp/recordings` in `backend-audio`. The frontend correctly used `RECORDINGS_BASE_DIR="/mnt/recordings"`. This caused backend-audio to write to `/tmp` while frontend looked in `/mnt`. 
+- **Fix**: 
+  - Verified architecture is **strictly VPS-based** (no Google Cloud dependencies).
+  - Fixed local `deploy/backend-audio.env.production` to point to `/mnt/recordings` and `127.0.0.1:3000` for token validation.
+  - SSH'd into VPS and changed `RECORDINGS_BASE_DIR=/mnt/recordings` in `/home/root/apps/egonair-stream/current/backend-audio/.env`.
+  - Moved all orphaned `.mp3` and `.webm` files from `/tmp/recordings` to `/mnt/recordings` via SSH.
+  - Restarted `egonair-audio` process on the VPS with `--update-env`.
+  - Confirmed `ENABLE_SHOUTCAST_LIVE=true` was preserved successfully so broadcasting remains fully functional.

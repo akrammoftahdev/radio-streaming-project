@@ -1,11 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import StudioUI from "./studio-ui-v3";
+import StudioUI from "./studio-ui-v2";
 import LogoutButton from "./logout-button";
 import { RecordingCompactList } from "@/components/recordings/RecordingPlayer";
 import Link from "next/link";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { useTranslations, useLocale } from "next-intl";
+import { isRtl } from "@/i18n/config";
+import LanguageSwitcher from "@/components/ui/LanguageSwitcher";
 
 type DirectDjRadioOption = {
   id:         string;
@@ -38,6 +41,10 @@ export default function DirectDjPreFlightScreen({
   radios, bgCategories, songCategories, adminBreakCategories,
   presenterBreakCategories, adminAdCategories, presenterAdCategories, sfxCategories, latestRecordings,
 }: Props) {
+  const t = useTranslations("studio.directDj");
+  const locale = useLocale();
+  const dir = isRtl(locale) ? 'rtl' : 'ltr';
+
   const [hasPassed,       setHasPassed]       = useState(false);
   const [mounted,         setMounted]         = useState(false);
   const [micStatus,       setMicStatus]       = useState<"pending" | "granted" | "denied">("pending");
@@ -83,19 +90,19 @@ export default function DirectDjPreFlightScreen({
       
       // Catch NextAuth silent session redirects
       if (res.redirected || res.url.includes('/login')) {
-        setConnectError("انتهت الجلسة. يرجى تسجيل الدخول مجدداً");
+        setConnectError(t("sessionExpired"));
         setTimeout(() => { window.location.href = '/login'; }, 1500);
         return;
       }
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({})) as { error?: string };
-        throw new Error(err?.error ?? `فشل الاتصال (${res.status})`);
+        throw new Error(err?.error ?? t("connectionFailed", { status: String(res.status) }));
       }
       setConnecting(false);
       setHasPassed(true);
     } catch (e: unknown) {
-      setConnectError((e as Error)?.message ?? "حدث خطأ أثناء الاتصال");
+      setConnectError((e as Error)?.message ?? t("connectionError"));
       setConnecting(false);
     }
   };
@@ -120,12 +127,12 @@ export default function DirectDjPreFlightScreen({
 
   if (radios.length === 0) {
     return (
-      <div dir="rtl" className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-4 font-sans">
+      <div dir={dir} className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-4 font-sans">
         <div className="absolute top-4 left-4"><LogoutButton /></div>
         <div className="bg-neutral-900 border border-amber-500/20 rounded-2xl p-8 max-w-md w-full text-center shadow-xl">
           <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">🎙️</div>
-          <h2 className="text-xl font-bold text-neutral-200 mb-2">لا توجد إذاعات مضافة</h2>
-          <p className="text-neutral-400">لا توجد إذاعات مضافة لهذا الحساب. تواصل مع الإدارة.</p>
+          <h2 className="text-xl font-bold text-neutral-200 mb-2">{t("noRadiosTitle")}</h2>
+          <p className="text-neutral-400">{t("noRadiosDesc")}</p>
         </div>
       </div>
     );
@@ -150,8 +157,9 @@ export default function DirectDjPreFlightScreen({
   );
 
   return (
-    <div dir="rtl" className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-4 font-sans relative overflow-hidden">
+    <div dir={dir} className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col items-center justify-center p-4 font-sans relative overflow-hidden">
       <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
+        <LanguageSwitcher />
         <Link
           href="/profile"
           className="flex items-center gap-1.5 text-xs text-neutral-500 hover:text-amber-300 border border-neutral-800 hover:border-amber-500/40 rounded-lg px-3 py-2 transition-colors bg-neutral-900/80"
@@ -159,7 +167,7 @@ export default function DirectDjPreFlightScreen({
           <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
           </svg>
-          ملفي
+          {t("myProfile")}
         </Link>
         <LogoutButton />
       </div>
@@ -171,41 +179,41 @@ export default function DirectDjPreFlightScreen({
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-amber-500 to-orange-400 rounded-t-3xl" />
           <div className="flex items-center justify-center gap-2 mb-1">
             <span className="text-lg">🎙️</span>
-            <h1 className="text-2xl font-bold text-neutral-100">DJ مباشر</h1>
+            <h1 className="text-2xl font-bold text-neutral-100">{t("title")}</h1>
           </div>
-          <p className="text-xs text-neutral-500 mb-6">اختر الإذاعة واتصل مباشرة — بدون جدول برامج</p>
+          <p className="text-xs text-neutral-500 mb-6">{t("subtitle")}</p>
 
           <div className="space-y-3 text-right mb-6">
             <div className="flex items-center justify-between p-3.5 bg-neutral-950/50 rounded-xl border border-neutral-800">
-              <span className="text-sm font-medium text-neutral-300">المتصفح جاهز</span>
+              <span className="text-sm font-medium text-neutral-300">{t("browserReady")}</span>
               {mounted && browserStatus === "ok" ? <CheckIcon /> : <SpinIcon />}
             </div>
             <div className="flex items-center justify-between p-3.5 bg-neutral-950/50 rounded-xl border border-neutral-800">
-              <span className="text-sm font-medium text-neutral-300">الاتصال بالخادم</span>
+              <span className="text-sm font-medium text-neutral-300">{t("serverConnection")}</span>
               {mounted && serverStatus === "ok" ? <CheckIcon /> : <SpinIcon />}
             </div>
             <div className={`p-3.5 bg-neutral-950/50 rounded-xl border ${mounted && micStatus === "denied" ? "border-red-500/50" : "border-neutral-800"}`}>
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-neutral-300">صلاحية الميكروفون</span>
+                <span className="text-sm font-medium text-neutral-300">{t("micPermission")}</span>
                 {!mounted ? <SpinIcon />
                   : micStatus === "granted" ? <CheckIcon />
                   : micStatus === "denied"  ? <XIcon />
                   : (
                     <button onClick={requestMic} className="px-3 py-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 rounded-lg text-xs font-medium transition-colors">
-                      طلب الصلاحية
+                      {t("requestPermission")}
                     </button>
                   )}
               </div>
               {mounted && micStatus === "denied" && (
                 <p className="mt-2 text-xs text-red-400/80 bg-red-500/10 p-2 rounded leading-relaxed border border-red-500/20">
-                  يرجى تفعيل الميكروفون من إعدادات المتصفح وتحديث الصفحة.
+                  {t("micDeniedHint")}
                 </p>
               )}
             </div>
           </div>
 
           <div className="mb-6 text-right">
-            <label className="block text-xs font-medium text-neutral-400 mb-2">اختر الإذاعة للبث</label>
+            <label className="block text-xs font-medium text-neutral-400 mb-2">{t("selectRadio")}</label>
             <SearchableSelect
               value={selectedRadioId}
               onChange={(val) => setSelectedRadioId(val)}
@@ -214,8 +222,8 @@ export default function DirectDjPreFlightScreen({
                 label: r.radioName,
                 subLabel: `${r.djUsername}@${r.host}:${r.port} · ${r.bitrate}kbps`
               }))}
-              placeholder="اختر الإذاعة..."
-              searchPlaceholder="ابحث عن الإذاعة بالاسم أو المضيف..."
+              placeholder={t("radioPlaceholder")}
+              searchPlaceholder={t("radioSearchPlaceholder")}
             />
             {selectedRadio && (
               <p className="text-xs text-neutral-600 mt-1.5 font-mono text-left" dir="ltr">
@@ -235,7 +243,7 @@ export default function DirectDjPreFlightScreen({
 
           {!mounted ? (
             <button type="button" disabled className="w-full py-3.5 font-medium rounded-xl bg-neutral-800 text-neutral-500 cursor-not-allowed">
-              اتصال مباشر
+              {t("connectDirect")}
             </button>
           ) : (
             <button
@@ -248,7 +256,7 @@ export default function DirectDjPreFlightScreen({
                   : "bg-neutral-800 text-neutral-500 cursor-not-allowed"
               }`}
             >
-              {connecting ? "جاري تجهيز الاستوديو..." : "دخول الاستوديو 🎙️"}
+              {connecting ? t("preparingStudio") : t("enterStudio")}
             </button>
           )}
         </div>
@@ -262,10 +270,10 @@ export default function DirectDjPreFlightScreen({
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
               </svg>
-              أرشيف تسجيلاتي
+              {t("myRecordings")}
             </span>
             <span className="text-xs text-neutral-600 flex items-center gap-1">
-              عرض الكل
+              {t("viewAll")}
               <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="9 18 15 12 9 6" />
               </svg>
@@ -273,7 +281,7 @@ export default function DirectDjPreFlightScreen({
           </Link>
           <div className="divide-y divide-neutral-800/60">
             {latestRecordings.length === 0
-              ? <p className="text-xs text-neutral-600 text-center py-5 px-4">لا توجد تسجيلات بعد</p>
+              ? <p className="text-xs text-neutral-600 text-center py-5 px-4">{t("noRecordingsYet")}</p>
               : <RecordingCompactList recordings={latestRecordings} />}
           </div>
         </div>

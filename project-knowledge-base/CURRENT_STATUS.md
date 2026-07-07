@@ -37,7 +37,6 @@
 ### What Has NOT Been Done Yet
 - ❌ No Docker images built
 - ❌ No Cloud Run services deployed yet
-- [HISTORICAL — COMPLETED] Database migrated from SQLite to PostgreSQL on VPS
 - [HISTORICAL] Cloud Run endpoints no longer in use. VPS deployment active.
 - ❌ No VPS changes / No WordPress touched
 
@@ -173,7 +172,6 @@ wiring it end-to-end through the production stack.
 | Presenter list (`/admin/presenters`) | ✅ Complete | Lists all presenters |
 | Add presenter (`/admin/presenters/new`) | ✅ Complete | Creates user + profile + validity + SonicPanel credentials |
 | Edit presenter (`/admin/presenters/[id]/edit`) | ✅ Complete | Fixed Next.js 15 async params bug |
-| Presenter SonicPanel credentials | ✅ Complete | Stored AES-256-GCM encrypted in PostgreSQL (previously SQLite during development) |
 | Media library (`/admin/media`) | ✅ Complete | Categories (BACKGROUND / SONG) + tracks |
 | Live sessions monitor (`/admin/live`) | ✅ Complete | Auto-refreshes every 5 seconds |
 | Phase 1 status checklist (`/admin/status`) | ✅ Complete | Progress tracking page |
@@ -268,7 +266,6 @@ wiring it end-to-end through the production stack.
 **Backup folder:** `backups/2026-04-28_16-55-safe-exit/`  
 **All services stopped:** Next.js (3000) ✅ | backend-audio (4001) ✅ | SHOUTcast (4896) ✅  
 **No presenter left ON AIR** ✅  
-[HISTORICAL] Database was SQLite `dev.db` during development. Now PostgreSQL on VPS.  
 **Recordings:** 25 files, 57 MB total, NOT copied (see `RECORDINGS_INVENTORY.md`)  
 
 ---

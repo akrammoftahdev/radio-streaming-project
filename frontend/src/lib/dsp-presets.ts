@@ -81,13 +81,14 @@ export const DSP_GROUP_ENABLE_KEY: Record<string, keyof DspParams> = {
 };
 
 // System presets — seeded into DB with isSystem=true
+// `name` values are translation keys resolved via t(`presets.${key}`) in UI
 export const SYSTEM_PRESETS: { name: string; params: DspParams }[] = [
   {
-    name: "بدون معالجة",  // No processing
+    name: "presets.noProcessing",
     params: { ...DEFAULT_DSP_PARAMS },
   },
   {
-    name: "صوت إذاعي FM",  // FM Radio Voice
+    name: "presets.fmRadio",
     params: {
       ...DEFAULT_DSP_PARAMS,
       filterEnabled: true, eqEnabled: true, dynamicsEnabled: true, gateEnabled: true,
@@ -103,7 +104,7 @@ export const SYSTEM_PRESETS: { name: string; params: DspParams }[] = [
     },
   },
   {
-    name: "صوت بودكاست",  // Podcast Voice
+    name: "presets.podcast",
     params: {
       ...DEFAULT_DSP_PARAMS,
       filterEnabled: true, eqEnabled: true, dynamicsEnabled: true, gateEnabled: true,
@@ -116,7 +117,7 @@ export const SYSTEM_PRESETS: { name: string; params: DspParams }[] = [
     },
   },
   {
-    name: "صوت عميق (بيس)",  // Deep Bass Voice
+    name: "presets.deepBass",
     params: {
       ...DEFAULT_DSP_PARAMS,
       filterEnabled: true, eqEnabled: true, dynamicsEnabled: true, warmthEnabled: true,
@@ -129,7 +130,7 @@ export const SYSTEM_PRESETS: { name: string; params: DspParams }[] = [
     },
   },
   {
-    name: "صوت حاد وواضح",  // Bright & Clear
+    name: "presets.brightClear",
     params: {
       ...DEFAULT_DSP_PARAMS,
       filterEnabled: true, eqEnabled: true, dynamicsEnabled: true, deesserEnabled: true,
@@ -142,7 +143,7 @@ export const SYSTEM_PRESETS: { name: string; params: DspParams }[] = [
     },
   },
   {
-    name: "صوت دافئ (راديو كلاسيك)",  // Warm Classic Radio
+    name: "presets.warmClassic",
     params: {
       ...DEFAULT_DSP_PARAMS,
       filterEnabled: true, eqEnabled: true, dynamicsEnabled: true, warmthEnabled: true,
@@ -156,7 +157,7 @@ export const SYSTEM_PRESETS: { name: string; params: DspParams }[] = [
     },
   },
   {
-    name: "صوت تلفزيوني",  // TV Broadcast
+    name: "presets.tvBroadcast",
     params: {
       ...DEFAULT_DSP_PARAMS,
       filterEnabled: true, eqEnabled: true, dynamicsEnabled: true, gateEnabled: true,
@@ -173,7 +174,7 @@ export const SYSTEM_PRESETS: { name: string; params: DspParams }[] = [
     },
   },
   {
-    name: "صوت مع ريفيرب خفيف",  // Light Reverb
+    name: "presets.lightReverb",
     params: {
       ...DEFAULT_DSP_PARAMS,
       filterEnabled: true, dynamicsEnabled: true, reverbEnabled: true,
@@ -183,7 +184,7 @@ export const SYSTEM_PRESETS: { name: string; params: DspParams }[] = [
     },
   },
   {
-    name: "صوت مع تأخير",  // Echo/Delay Effect
+    name: "presets.echoDelay",
     params: {
       ...DEFAULT_DSP_PARAMS,
       filterEnabled: true, dynamicsEnabled: true, delayEnabled: true,
@@ -193,7 +194,7 @@ export const SYSTEM_PRESETS: { name: string; params: DspParams }[] = [
     },
   },
   {
-    name: "صوت تلاوة قرآن",  // Quran Recitation
+    name: "presets.quranRecitation",
     params: {
       ...DEFAULT_DSP_PARAMS,
       filterEnabled: true, eqEnabled: true, dynamicsEnabled: true,
@@ -214,43 +215,45 @@ export const SYSTEM_PRESETS: { name: string; params: DspParams }[] = [
 type DspNumericKey = Exclude<keyof DspParams, `${string}Enabled`>;
 
 // Parameter display metadata for UI sliders
+// `label` values are translation keys resolved via t(`params.${key}`) in UI
 export const DSP_PARAM_META: Record<DspNumericKey, { label: string; min: number; max: number; step: number; unit: string }> = {
-  hpFreq:            { label: "قطع منخفض",      min: 20,    max: 500,   step: 5,     unit: "Hz" },
-  lpFreq:            { label: "قطع عالي",        min: 4000,  max: 22000, step: 100,   unit: "Hz" },
-  eqLowGain:         { label: "بيس (EQ)",        min: -12,   max: 12,    step: 0.5,   unit: "dB" },
-  eqLowFreq:         { label: "تردد البيس",      min: 60,    max: 500,   step: 10,    unit: "Hz" },
-  eqMidGain:         { label: "وسط (EQ)",        min: -12,   max: 12,    step: 0.5,   unit: "dB" },
-  eqMidFreq:         { label: "تردد الوسط",      min: 500,   max: 4000,  step: 50,    unit: "Hz" },
-  eqHighGain:        { label: "حاد (EQ)",        min: -12,   max: 12,    step: 0.5,   unit: "dB" },
-  eqHighFreq:        { label: "تردد الحاد",      min: 4000,  max: 12000, step: 100,   unit: "Hz" },
-  compThreshold:     { label: "عتبة الضغط",      min: -60,   max: 0,     step: 1,     unit: "dB" },
-  compRatio:         { label: "نسبة الضغط",       min: 1,     max: 20,    step: 0.5,   unit: ":1" },
-  compAttack:        { label: "هجوم الضغط",       min: 0.001, max: 1,     step: 0.001, unit: "s" },
-  compRelease:       { label: "إطلاق الضغط",      min: 0.01,  max: 1,     step: 0.01,  unit: "s" },
-  compKnee:          { label: "ركبة الضغط",       min: 0,     max: 40,    step: 1,     unit: "dB" },
-  limiterThreshold:  { label: "عتبة المحدد",      min: -20,   max: 0,     step: 0.5,   unit: "dB" },
-  gateThreshold:     { label: "عتبة البوابة",     min: -96,   max: -20,   step: 1,     unit: "dB" },
-  gateAttack:        { label: "هجوم البوابة",      min: 0.001, max: 0.1,   step: 0.001, unit: "s" },
-  gateRelease:       { label: "إطلاق البوابة",     min: 0.01,  max: 0.5,   step: 0.01,  unit: "s" },
-  deEsserFreq:       { label: "تردد De-Esser",    min: 4000,  max: 10000, step: 100,   unit: "Hz" },
-  deEsserQ:          { label: "حدة De-Esser",     min: 0.5,   max: 10,    step: 0.1,   unit: "Q" },
-  deEsserReduction:  { label: "تخفيض De-Esser",   min: 0,     max: 12,    step: 0.5,   unit: "dB" },
-  reverbWet:         { label: "مزج الريفيرب",     min: 0,     max: 1,     step: 0.01,  unit: "" },
-  reverbDecay:       { label: "مدة الريفيرب",     min: 0.1,   max: 5,     step: 0.1,   unit: "s" },
-  delayTime:         { label: "وقت التأخير",      min: 0,     max: 1,     step: 0.01,  unit: "s" },
-  delayFeedback:     { label: "تكرار التأخير",    min: 0,     max: 0.95,  step: 0.01,  unit: "" },
-  delayWet:          { label: "مزج التأخير",      min: 0,     max: 1,     step: 0.01,  unit: "" },
-  warmthAmount:      { label: "دفء الصوت",        min: 0,     max: 1,     step: 0.01,  unit: "" },
+  hpFreq:            { label: "params.lowCut",           min: 20,    max: 500,   step: 5,     unit: "Hz" },
+  lpFreq:            { label: "params.highCut",          min: 4000,  max: 22000, step: 100,   unit: "Hz" },
+  eqLowGain:         { label: "params.bassEq",           min: -12,   max: 12,    step: 0.5,   unit: "dB" },
+  eqLowFreq:         { label: "params.bassFreq",         min: 60,    max: 500,   step: 10,    unit: "Hz" },
+  eqMidGain:         { label: "params.midEq",            min: -12,   max: 12,    step: 0.5,   unit: "dB" },
+  eqMidFreq:         { label: "params.midFreq",          min: 500,   max: 4000,  step: 50,    unit: "Hz" },
+  eqHighGain:        { label: "params.highEq",           min: -12,   max: 12,    step: 0.5,   unit: "dB" },
+  eqHighFreq:        { label: "params.highFreq",         min: 4000,  max: 12000, step: 100,   unit: "Hz" },
+  compThreshold:     { label: "params.compThreshold",    min: -60,   max: 0,     step: 1,     unit: "dB" },
+  compRatio:         { label: "params.compRatio",        min: 1,     max: 20,    step: 0.5,   unit: ":1" },
+  compAttack:        { label: "params.compAttack",       min: 0.001, max: 1,     step: 0.001, unit: "s" },
+  compRelease:       { label: "params.compRelease",      min: 0.01,  max: 1,     step: 0.01,  unit: "s" },
+  compKnee:          { label: "params.compKnee",         min: 0,     max: 40,    step: 1,     unit: "dB" },
+  limiterThreshold:  { label: "params.limiterThreshold", min: -20,   max: 0,     step: 0.5,   unit: "dB" },
+  gateThreshold:     { label: "params.gateThreshold",    min: -96,   max: -20,   step: 1,     unit: "dB" },
+  gateAttack:        { label: "params.gateAttack",       min: 0.001, max: 0.1,   step: 0.001, unit: "s" },
+  gateRelease:       { label: "params.gateRelease",      min: 0.01,  max: 0.5,   step: 0.01,  unit: "s" },
+  deEsserFreq:       { label: "params.deEsserFreq",      min: 4000,  max: 10000, step: 100,   unit: "Hz" },
+  deEsserQ:          { label: "params.deEsserQ",         min: 0.5,   max: 10,    step: 0.1,   unit: "Q" },
+  deEsserReduction:  { label: "params.deEsserReduction", min: 0,     max: 12,    step: 0.5,   unit: "dB" },
+  reverbWet:         { label: "params.reverbMix",        min: 0,     max: 1,     step: 0.01,  unit: "" },
+  reverbDecay:       { label: "params.reverbDecay",      min: 0.1,   max: 5,     step: 0.1,   unit: "s" },
+  delayTime:         { label: "params.delayTime",        min: 0,     max: 1,     step: 0.01,  unit: "s" },
+  delayFeedback:     { label: "params.delayFeedback",    min: 0,     max: 0.95,  step: 0.01,  unit: "" },
+  delayWet:          { label: "params.delayMix",         min: 0,     max: 1,     step: 0.01,  unit: "" },
+  warmthAmount:      { label: "params.warmth",           min: 0,     max: 1,     step: 0.01,  unit: "" },
 };
 
 // Groups for UI sections
+// `label` values are translation keys resolved via t(`groups.${key}`) in UI
 export const DSP_GROUPS = [
-  { key: 'filter' as const,     label: '🎚️ فلاتر التردد',      params: ['hpFreq', 'lpFreq'] as const },
-  { key: 'eq' as const,         label: '🎛️ المعادل الصوتي (EQ)', params: ['eqLowGain', 'eqLowFreq', 'eqMidGain', 'eqMidFreq', 'eqHighGain', 'eqHighFreq'] as const },
-  { key: 'dynamics' as const,   label: '🔊 ديناميكيات',         params: ['compThreshold', 'compRatio', 'compAttack', 'compRelease', 'compKnee', 'limiterThreshold'] as const },
-  { key: 'gate' as const,       label: '🚪 بوابة الضوضاء',      params: ['gateThreshold', 'gateAttack', 'gateRelease'] as const },
-  { key: 'deesser' as const,    label: '🐍 مزيل الصفير',        params: ['deEsserFreq', 'deEsserQ', 'deEsserReduction'] as const },
-  { key: 'reverb' as const,     label: '🏛️ ريفيرب',             params: ['reverbWet', 'reverbDecay'] as const },
-  { key: 'delay' as const,      label: '🔁 تأخير / صدى',        params: ['delayTime', 'delayFeedback', 'delayWet'] as const },
-  { key: 'warmth' as const,     label: '🔥 دفء الصوت',          params: ['warmthAmount'] as const },
+  { key: 'filter' as const,     label: 'groups.filters',      params: ['hpFreq', 'lpFreq'] as const },
+  { key: 'eq' as const,         label: 'groups.equalizer',    params: ['eqLowGain', 'eqLowFreq', 'eqMidGain', 'eqMidFreq', 'eqHighGain', 'eqHighFreq'] as const },
+  { key: 'dynamics' as const,   label: 'groups.dynamics',     params: ['compThreshold', 'compRatio', 'compAttack', 'compRelease', 'compKnee', 'limiterThreshold'] as const },
+  { key: 'gate' as const,       label: 'groups.gate',         params: ['gateThreshold', 'gateAttack', 'gateRelease'] as const },
+  { key: 'deesser' as const,    label: 'groups.deesser',      params: ['deEsserFreq', 'deEsserQ', 'deEsserReduction'] as const },
+  { key: 'reverb' as const,     label: 'groups.reverb',       params: ['reverbWet', 'reverbDecay'] as const },
+  { key: 'delay' as const,      label: 'groups.delay',        params: ['delayTime', 'delayFeedback', 'delayWet'] as const },
+  { key: 'warmth' as const,     label: 'groups.warmth',       params: ['warmthAmount'] as const },
 ] as const;

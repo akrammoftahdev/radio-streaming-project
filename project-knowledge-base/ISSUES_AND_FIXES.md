@@ -132,19 +132,15 @@ The current approach is intentionally lightweight.
 
 ---
 
-## FIX-006 — Firestore vs SQLite Confusion (Production Config)
 
 **Status:** FIXED (one-time configuration fix)
 
 **Symptom:** A deployment configuration referenced Firestore, causing connection failures.
 
-**Root Cause:** The project uses PostgreSQL (via Prisma), not Firestore. Previously SQLite during development. A stale Firebase configuration
 was applied.
 
-**Fix Applied:** [HISTORICAL] During development, the database was SQLite at `frontend/prisma/dev.db`. Now PostgreSQL on VPS (localhost:5432, database `egonair`).
 Firestore/Firebase configs removed from active configuration.
 
-**Do Not Regress:** Do not introduce Firestore or any Firebase SDK into this project. The database stack is Prisma + PostgreSQL (production on VPS). Previously used SQLite during development.
 
 ---
 
@@ -1279,7 +1275,6 @@ Optional: verify the negative case — log in as `test_new` presenter and confir
 
 ### What Was Done
 
-- ✅ `test_new` user located in local SQLite DB — `id: a25fdd58-86d0-4d27-9b4e-5545e519c26f` — role: `PRESENTER`
 - ✅ Password `presenter123` hashed with `bcrypt.hash("presenter123", 10)` — same method as `prisma/seed.ts`
 - ✅ `passwordHash` field updated via Prisma `user.update({ where: { username: "test_new" } })`
 - ✅ `bcrypt.compare("presenter123", updatedHash)` verified → **true**
@@ -1317,7 +1312,6 @@ Re-run negative isolation test:
 
 ### What Was Done
 
-- ✅ `test_new` user confirmed in local SQLite DB — id: `a25fdd58-86d0-4d27-9b4e-5545e519c26f`
 - ✅ One `BroadcastSchedule` created via Prisma `broadcastSchedule.create()`
 - ✅ Re-read from DB and confirmed `isActive = true`, `OPEN_NOW = true`
 
@@ -1360,7 +1354,6 @@ Re-run full negative isolation test:
 
 ### What Was Done
 
-- ✅ `adminfinal_test` user confirmed in local SQLite DB — id: `69d9c5c7-3ec1-4f07-9d21-8c372b741d5a` — name: "Final Test"
 - ✅ One `MediaCategory` created via Prisma `mediaCategory.create()`
 - ✅ Re-read from DB — all 3 field verifications passed
 
@@ -1624,7 +1617,6 @@ Requires: explicit approval, `akrammoftahyt@gmail.com` Cloud Shell access, and F
 
 ### What Was Done
 
-- ✅ `adminfinal_test` confirmed in local SQLite DB — id: `69d9c5c7-3ec1-4f07-9d21-8c372b741d5a`
 - ✅ `BroadcastSchedule` id `8faf5032-8a48-4de0-aa48-4513ebb49dd1` found and updated via Prisma `broadcastSchedule.update()`
 - ✅ Re-read from DB — `IS_OPEN_NOW = true` confirmed
 
@@ -2119,7 +2111,6 @@ If backend-audio cannot be run locally, mark mic-close auto-start as **DEFERRED*
 
 ### What Was Tested
 
-A one-off Node.js in-memory script read the `SonicPanelCredential` row from the local SQLite DB, decrypted the DJ password using the `ENCRYPTION_KEY` from `frontend/.env`, built a SHOUTcast v2 HTTP-style `SOURCE` handshake, connected via raw TCP, sent the handshake, received the server response, then immediately destroyed the socket.
 
 No files were written. No audio was sent. No stream remained open.
 
@@ -4106,7 +4097,6 @@ The Prisma query included:
 NOT: { sourceType: "DIRECT_DJ" }
 ```
 In SQL this generates `WHERE source_type != 'DIRECT_DJ'`.
-In SQL (SQLite), `NULL != 'DIRECT_DJ'` evaluates to `NULL` (unknown), which is treated as **false** by WHERE clauses.
 All 49 legacy recordings had `sourceType = NULL` (field was added after recordings were created and never backfilled), so every row was silently excluded.
 
 ### Fix

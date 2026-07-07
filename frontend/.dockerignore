@@ -8,5 +8,4 @@ node_modules
 README.md
 Dockerfile
 .dockerignore
-prisma/dev.db
 prisma/*.db

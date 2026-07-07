@@ -81,7 +81,7 @@ export default async function StationInboxPage({ params }: { params: Promise<{ i
 
   if (!station) redirect("/admin/stations");
 
-  const tl = await getTranslations("LiveMessaging");
+  const tl = await getTranslations("studio.LiveMessaging");
   const tc = await getTranslations("common");
   
   const messages = await prisma.listenerMessage.findMany({
@@ -92,7 +92,7 @@ export default async function StationInboxPage({ params }: { params: Promise<{ i
   return (
     <AdminPageShell title={`${tl("inbox")} - ${station.name}`}>
       <AutoRefresh interval={5000} />
-      <div className="bg-slate-800 border border-slate-700/50 rounded-2xl p-6 shadow-xl">
+      <div dir="rtl" className="bg-slate-800 border border-slate-700/50 rounded-2xl p-6 shadow-xl">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold text-slate-200 flex items-center gap-2">
             <span className="text-2xl">📥</span>

@@ -26,7 +26,6 @@ RUN npm ci
 COPY . .
 
 # ── Swap Prisma schema for Cloud (PostgreSQL) ─────────────────────────────────
-# schema.prisma on disk = sqlite (local/VPS safe).
 # schema.cloud.prisma = postgresql (Cloud SQL) + correct binaryTargets for Alpine.
 # We copy the cloud schema over the default here so the generated Prisma
 # client targets PostgreSQL. This does NOT affect local dev or the VPS.

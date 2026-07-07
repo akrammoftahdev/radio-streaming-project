@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 
 type Station = { id: string; name: string; count?: number };
 
@@ -49,15 +50,18 @@ export function SMStationFilter({
   stations,
   paramKey = "station",
   accent = "teal",
-  allLabel = "الكل",
+  allLabel,
 }: {
   stations: Station[];
   paramKey?: string;
   accent?: Accent;
   allLabel?: string;
 }) {
+  const t = useTranslations("stationManager.stationFilter");
   const router = useRouter();
   const sp = useSearchParams();
+
+  const resolvedAllLabel = allLabel ?? t("all");
 
   // ── Parse comma-separated selected IDs from URL ──────────────────────────
   const rawParam   = sp.get(paramKey) ?? "";
@@ -114,11 +118,11 @@ export function SMStationFilter({
 
   // ── Trigger label ────────────────────────────────────────────────────────
   const triggerLabel = () => {
-    if (selectedIds.size === 0) return allLabel;
+    if (selectedIds.size === 0) return resolvedAllLabel;
     if (selectedIds.size === 1) {
-      return stations.find(s => selectedIds.has(s.id))?.name ?? allLabel;
+      return stations.find(s => selectedIds.has(s.id))?.name ?? resolvedAllLabel;
     }
-    return `${selectedIds.size} محطات`;
+    return t("stationsCount", { count: selectedIds.size });
   };
 
   return (
@@ -153,7 +157,7 @@ export function SMStationFilter({
               <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
               </svg>
-              <input ref={inputRef} type="text" placeholder="بحث..." value={search}
+              <input ref={inputRef} type="text" placeholder={t("search")} value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="flex-1 bg-transparent border-none outline-none text-sm text-slate-200 placeholder-slate-600 text-right" dir="rtl"/>
             </div>
@@ -173,12 +177,12 @@ export function SMStationFilter({
                   }`}>
                     {!isActive && <svg xmlns="http://www.w3.org/2000/svg" className="w-2.5 h-2.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
                   </div>
-                  <span className="font-medium">{allLabel}</span>
+                  <span className="font-medium">{resolvedAllLabel}</span>
                 </button>
               )}
 
               {filtered.length === 0
-                ? <div className="p-3 text-sm text-slate-500 text-center">لا توجد نتائج</div>
+                ? <div className="p-3 text-sm text-slate-500 text-center">{t("noResults")}</div>
                 : filtered.map(s => {
                     const isSel = selectedIds.has(s.id);
                     return (
@@ -189,7 +193,7 @@ export function SMStationFilter({
                         </div>
                         <div className="flex-1 min-w-0 text-right">
                           <div className="font-medium truncate">{s.name}</div>
-                          {s.count !== undefined && <div className="text-xs text-slate-500">{s.count} عنصر</div>}
+                          {s.count !== undefined && <div className="text-xs text-slate-500">{t("itemCount", { count: s.count })}</div>}
                         </div>
                       </button>
                     );
@@ -206,7 +210,7 @@ export function SMStationFilter({
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                 </svg>
-                إلغاء تصفية المحطة
+                {t("clearFilter")}
               </button>
             </div>
           )}

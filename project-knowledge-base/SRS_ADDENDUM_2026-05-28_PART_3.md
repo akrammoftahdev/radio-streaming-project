@@ -72,7 +72,6 @@ Toggle switches are inherently direction-agnostic. Use `dir="ltr"` on the toggle
 ## 22. KB Maintenance Policy
 
 ### 22.1 Requirement
-The knowledge base MUST NOT contain references to **egyona**, **Cloud Run**, **gcloud**, **GitHub Actions**, or **SQLite as production database**.
 
 ### 22.2 Current Architecture (as of May 28, 2026)
 | Component | Value |

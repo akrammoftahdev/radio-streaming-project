@@ -4,14 +4,17 @@ import { auth, prisma } from "@/auth";
 import { redirect } from "next/navigation";
 import { Unauthorized } from "@/components/ui/Unauthorized";
 import { AdminPageShell } from "@/components/ui";
+import LanguageSwitcher from "@/components/ui/LanguageSwitcher";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { getTranslations, getLocale } from "next-intl/server";
 
 export const dynamic = "force-dynamic";
 import { getSystemSettings, resolveLogoUrl } from "@/lib/system-settings";
 
 export async function generateMetadata() {
   const settings = await getSystemSettings();
-  return { title: `لوحة الإدارة — ${settings.systemName || "EGONAIR"}` };
+  const t = await getTranslations("admin.dashboard");
+  return { title: t("metaTitle", { name: settings.systemName || "EGONAIR" }) };
 }
 
 interface DashboardStats {
@@ -94,15 +97,15 @@ async function getStats(): Promise<DashboardStats> {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-const num = (v: number | "--") => (v === "--" ? "--" : v.toLocaleString("ar-EG"));
+const num = (v: number | "--", locale: string) => (v === "--" ? "--" : v.toLocaleString(locale));
 
-function StatCard({ label, value, color, style, sub }: {
-  label: string; value: number | "--"; color?: string; style?: React.CSSProperties; sub?: string;
+function StatCard({ label, value, color, style, sub, locale }: {
+  label: string; value: number | "--"; color?: string; style?: React.CSSProperties; sub?: string; locale: string;
 }) {
   return (
     <div className="bg-slate-800 border border-slate-700/50 rounded-xl px-4 py-3 flex flex-col gap-0.5">
       <p className="text-xs text-slate-500 font-medium">{label}</p>
-      <p className={`text-2xl font-bold ${color ?? ""}`} style={style}>{num(value)}</p>
+      <p className={`text-2xl font-bold ${color ?? ""}`} style={style}>{num(value, locale)}</p>
       {sub && <p className="text-[10px] text-slate-600">{sub}</p>}
     </div>
   );
@@ -113,9 +116,14 @@ export default async function AdminDashboard() {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
+  const locale = await getLocale();
+  const t = await getTranslations("admin.dashboard");
+  const tc = await getTranslations("common");
+  const ta = await getTranslations("auth");
+
   const settings = await getSystemSettings();
   const systemName = settings.systemName || "EGONAIR";
-  const systemSubtitle = settings.systemSubtitle || "نظرة عامة على النظام وحالة البث";
+  const systemSubtitle = settings.systemSubtitle || t("systemOverview");
   const logoUrl = resolveLogoUrl(settings, "dark");
   if ((session.user as any).role !== "ADMIN") {
     return <Unauthorized role={(session.user as any).role ?? ""} />;
@@ -125,23 +133,24 @@ export default async function AdminDashboard() {
 
   const warnings: { icon: string; text: string; href: string }[] = [];
   if (typeof s.stationsNoCred === "number" && s.stationsNoCred > 0)
-    warnings.push({ icon: "📡", text: `${s.stationsNoCred} محطة نشطة بدون بيانات DJ افتراضية`, href: "/admin/stations" });
+    warnings.push({ icon: "📡", text: t("warningStationsNoCred", { count: s.stationsNoCred }), href: "/admin/stations" });
   if (typeof s.presentersNoStation === "number" && s.presentersNoStation > 0)
-    warnings.push({ icon: "🎙️", text: `${s.presentersNoStation} مذيع نشط بدون محطة مسندة`, href: "/admin/presenters" });
+    warnings.push({ icon: "🎙️", text: t("warningPresentersNoStation", { count: s.presentersNoStation }), href: "/admin/presenters" });
   if (typeof s.programsNoSchedule === "number" && s.programsNoSchedule > 0)
-    warnings.push({ icon: "📺", text: `${s.programsNoSchedule} برنامج نشط بدون جدول`, href: "/admin/programs" });
+    warnings.push({ icon: "📺", text: t("warningProgramsNoSchedule", { count: s.programsNoSchedule }), href: "/admin/programs" });
 
   const navItems = [
-    { href: "/admin/presenters",      icon: "🎙️", label: "المذيعون",           sub: "إدارة حسابات المذيعين",          color: "hover:border-indigo-500/50 group-hover:text-indigo-300" },
-    { href: "/admin/stations",        icon: "📻", label: "المحطات",            sub: "إضافة وتعديل محطات الراديو",     color: "hover:border-cyan-500/50 group-hover:text-cyan-300" },
-    { href: "/admin/programs",        icon: "📺", label: "البرامج",            sub: "برامج المذيعين وجداول البث",     color: "hover:border-purple-500/50 group-hover:text-purple-300" },
-    { href: "/admin/schedule",        icon: "📅", label: "جدول البث",          sub: "عرض الجدول الأسبوعي",            color: "hover:border-violet-500/50 group-hover:text-violet-300" },
-    { href: "/admin/schedule/audit",  icon: "🔍", label: "تدقيق الجداول",      sub: "تعارضات وإشكاليات الجداول",     color: "hover:border-amber-500/50 group-hover:text-amber-300" },
-    { href: "/admin/live",            icon: "🔴", label: "الجلسات الحية",      sub: "مراقبة البث المباشر",            color: "hover:border-red-500/50 group-hover:text-red-300" },
-    { href: "/admin/recordings",      icon: "🗂️", label: "أرشيف التسجيلات",   sub: "عرض وتحميل جلسات البث",         color: "hover:border-amber-500/50 group-hover:text-amber-300" },
-    { href: "/admin/station-managers",icon: "🧑‍💼", label: "مديرو المحطات",   sub: "ربط المديرين بالمحطات",         color: "hover:border-teal-500/50 group-hover:text-teal-300" },
-    { href: "/admin/media",           icon: "🎵", label: "مكتبة الوسائط",      sub: "إدارة المقاطع الصوتية",         color: "hover:border-teal-500/40"   },
-    { href: "/admin/settings",        icon: "⚙️", label: "إعدادات النظام",     sub: "الهوية، الألوان، وبيانات الدعم", color: "hover:border-slate-500/40"  },
+    { href: "/admin/presenters",      icon: "🎙️", label: t("navPresenters"),           sub: t("navPresentersDesc"),          color: "hover:border-indigo-500/50 group-hover:text-indigo-300" },
+    { href: "/admin/stations",        icon: "📻", label: t("navStations"),            sub: t("navStationsDesc"),     color: "hover:border-cyan-500/50 group-hover:text-cyan-300" },
+    { href: "/admin/programs",        icon: "📺", label: t("navPrograms"),            sub: t("navProgramsDesc"),     color: "hover:border-purple-500/50 group-hover:text-purple-300" },
+    { href: "/admin/schedule",        icon: "📅", label: t("navSchedule"),          sub: t("navScheduleDesc"),            color: "hover:border-violet-500/50 group-hover:text-violet-300" },
+    { href: "/admin/schedule/audit",  icon: "🔍", label: t("navAudit"),      sub: t("navAuditDesc"),     color: "hover:border-amber-500/50 group-hover:text-amber-300" },
+    { href: "/admin/live",            icon: "🔴", label: t("navLive"),      sub: t("navLiveDesc"),            color: "hover:border-red-500/50 group-hover:text-red-300" },
+    { href: "/admin/recordings",      icon: "🗂️", label: t("navRecordings"),   sub: t("navRecordingsDesc"),         color: "hover:border-amber-500/50 group-hover:text-amber-300" },
+    { href: "/admin/station-managers",icon: "🧑‍💼", label: t("navManagers"),   sub: t("navManagersDesc"),         color: "hover:border-teal-500/50 group-hover:text-teal-300" },
+    { href: "/admin/admins",          icon: "👑", label: t("navAdmins"),       sub: t("navAdminsDesc"),     color: "hover:border-blue-500/50 group-hover:text-blue-300" },
+    { href: "/admin/media",           icon: "🎵", label: t("navMedia"),      sub: t("navMediaDesc"),         color: "hover:border-teal-500/40"   },
+    { href: "/admin/settings",        icon: "⚙️", label: t("navSettings"),     sub: t("navSettingsDesc"), color: "hover:border-slate-500/40"  },
   ];
 
   return (
@@ -163,17 +172,18 @@ export default async function AdminDashboard() {
             )}
             <div>
               <h1 className="text-3xl font-bold text-slate-100 tracking-tight">
-                {logoUrl ? "لوحة الإدارة" : `لوحة إدارة ${systemName}`}
+                {logoUrl ? t("title") : t("titleWithName", { name: systemName })}
               </h1>
               <p className="text-slate-400 text-sm mt-1">{systemSubtitle}</p>
             </div>
           </div>
           <div className="flex items-center gap-2 mt-1 flex-shrink-0">
+            <LanguageSwitcher />
             <Link href="/profile"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-800 border border-slate-700 rounded-lg transition-colors"
               style={{ color: "var(--eg-text-muted)" }}
             >
-              ملفي الشخصي
+              {t("myProfile")}
             </Link>
             <form action={async () => {
               "use server";
@@ -182,7 +192,7 @@ export default async function AdminDashboard() {
             }}>
               <button type="submit"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-400 hover:text-red-400 bg-slate-800 hover:bg-red-500/10 border border-slate-700 hover:border-red-500/30 rounded-lg transition-colors">
-                تسجيل الخروج
+                {ta("logout")}
               </button>
             </form>
           </div>
@@ -196,7 +206,7 @@ export default async function AdminDashboard() {
                 className="flex items-center gap-3 bg-amber-500/5 border border-amber-500/20 hover:border-amber-500/40 rounded-xl px-4 py-3 text-sm text-amber-400 transition-colors">
                 <span className="text-base">{w.icon}</span>
                 <span>⚠️ {w.text}</span>
-                <span className="mr-auto text-xs text-amber-600">عرض ←</span>
+                <span className="mr-auto text-xs text-amber-600">{t("warningView")}</span>
               </Link>
             ))}
           </div>
@@ -209,19 +219,19 @@ export default async function AdminDashboard() {
             : "bg-slate-800 border-slate-700/50"
         }`}>
           <span className={`text-2xl font-bold ${typeof s.currentlyLive === "number" && s.currentlyLive > 0 ? "text-emerald-400" : "text-slate-500"}`}>
-            {num(s.currentlyLive)}
+            {num(s.currentlyLive, locale)}
           </span>
           <div>
-            <p className="text-sm font-medium text-slate-200">متصل على الهواء الآن</p>
-            <p className="text-xs text-slate-500">جلسات LIVE / CONNECTED</p>
+            <p className="text-sm font-medium text-slate-200">{t("liveNow")}</p>
+            <p className="text-xs text-slate-500">{t("liveSessionsLabel")}</p>
           </div>
           {typeof s.currentlyLive === "number" && s.currentlyLive > 0 && (
             <div className="mr-auto">
-              <StatusBadge label="مباشر" variant="success" dot />
+              <StatusBadge label={t("liveLabel")} variant="success" dot />
             </div>
           )}
           <Link href="/admin/live" className="mr-auto text-xs text-slate-500 hover:text-slate-300 border border-slate-700 hover:border-slate-500 rounded-lg px-3 py-1.5 transition-colors">
-            عرض الجلسات
+            {t("viewSessions")}
           </Link>
         </div>
 
@@ -231,29 +241,29 @@ export default async function AdminDashboard() {
           {/* Presenters */}
           <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-4 space-y-3">
             <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest flex items-center gap-2">
-              <span>🎙️</span> المذيعون
+              <span>🎙️</span> {t("sectionPresenters")}
             </h2>
             <div className="grid grid-cols-2 gap-2">
-              <StatCard label="الإجمالي"  value={s.totalPresenters}  />
-              <StatCard label="نشطون"     value={s.activePresenters} color="text-emerald-400" />
-              <StatCard label="محطة واحدة" value={s.singleStation}   style={{ color: "var(--eg-primary)" }}  sub="SINGLE_STATION" />
-              <StatCard label="متعدد"      value={s.multiStation}    style={{ color: "var(--eg-accent)" }}    sub="MULTI_STATION" />
-              <StatCard label="DJ مباشر"   value={s.directDj}        style={{ color: "var(--eg-accent)" }}    sub="DIRECT_DJ" />
-              <StatCard label="مديرو محطات" value={s.stationManagers} color="text-teal-400" />
+              <StatCard locale={locale} label={t("statTotal")}  value={s.totalPresenters}  />
+              <StatCard locale={locale} label={t("statActive")}     value={s.activePresenters} color="text-emerald-400" />
+              <StatCard locale={locale} label={t("statSingleStation")} value={s.singleStation}   style={{ color: "var(--eg-primary)" }}  sub="SINGLE_STATION" />
+              <StatCard locale={locale} label={t("statMulti")}      value={s.multiStation}    style={{ color: "var(--eg-accent)" }}    sub="MULTI_STATION" />
+              <StatCard locale={locale} label={t("statDirectDj")}   value={s.directDj}        style={{ color: "var(--eg-accent)" }}    sub="DIRECT_DJ" />
+              <StatCard locale={locale} label={t("statStationManagers")} value={s.stationManagers} color="text-teal-400" />
             </div>
           </div>
 
           {/* Stations */}
           <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-4 space-y-3">
             <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest flex items-center gap-2">
-              <span>📡</span> المحطات
+              <span>📡</span> {t("sectionStations")}
             </h2>
             <div className="grid grid-cols-2 gap-2">
-              <StatCard label="الإجمالي"    value={s.totalStations}  />
-              <StatCard label="نشطة"        value={s.activeStations} color="text-emerald-400" />
-              <StatCard label="بدون DJ cred" value={s.stationsNoCred}
+              <StatCard locale={locale} label={t("statTotal")}    value={s.totalStations}  />
+              <StatCard locale={locale} label={t("statActiveF")}        value={s.activeStations} color="text-emerald-400" />
+              <StatCard locale={locale} label={t("statNoDjCred")} value={s.stationsNoCred}
                 color={typeof s.stationsNoCred === "number" && s.stationsNoCred > 0 ? "text-red-400" : "text-slate-400"} />
-              <StatCard label="مذيعون بلا محطة" value={s.presentersNoStation}
+              <StatCard locale={locale} label={t("statPresentersNoStation")} value={s.presentersNoStation}
                 color={typeof s.presentersNoStation === "number" && s.presentersNoStation > 0 ? "text-amber-400" : "text-slate-400"} />
             </div>
           </div>
@@ -261,23 +271,23 @@ export default async function AdminDashboard() {
           {/* Programs / Content */}
           <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-4 space-y-3">
             <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest flex items-center gap-2">
-              <span>📺</span> البرامج والمحتوى
+              <span>📺</span> {t("sectionProgramsContent")}
             </h2>
             <div className="grid grid-cols-2 gap-2">
-              <StatCard label="إجمالي البرامج"   value={s.totalPrograms}    />
-              <StatCard label="برامج نشطة"       value={s.activePrograms}   color="text-emerald-400" />
-              <StatCard label="بلا جدول"         value={s.programsNoSchedule}
+              <StatCard locale={locale} label={t("statTotalPrograms")}   value={s.totalPrograms}    />
+              <StatCard locale={locale} label={t("statActivePrograms")}       value={s.activePrograms}   color="text-emerald-400" />
+              <StatCard locale={locale} label={t("statNoSchedule")}         value={s.programsNoSchedule}
                 color={typeof s.programsNoSchedule === "number" && s.programsNoSchedule > 0 ? "text-amber-400" : "text-slate-400"} />
-              <StatCard label="التسجيلات"        value={s.totalRecordings}  style={{ color: "var(--eg-primary)" }} />
-              <StatCard label="تسجيلات الأسبوع" value={s.recordingsThisWeek} style={{ color: "var(--eg-accent)" }} />
-              <StatCard label="تصنيفات الوسائط" value={s.mediaCategories}   sub={`${num(s.mediaTracks)} مقطع`} />
+              <StatCard locale={locale} label={t("statRecordings")}        value={s.totalRecordings}  style={{ color: "var(--eg-primary)" }} />
+              <StatCard locale={locale} label={t("statWeekRecordings")} value={s.recordingsThisWeek} style={{ color: "var(--eg-accent)" }} />
+              <StatCard locale={locale} label={t("statMediaCategories")} value={s.mediaCategories}   sub={t("statMediaTracks", { count: num(s.mediaTracks, locale) })} />
             </div>
           </div>
         </div>
 
         {/* ── Navigation ── */}
         <nav>
-          <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-4">الأقسام</h2>
+          <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-4">{t("sectionNav")}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {navItems.map((item) => (
               <Link key={item.href} href={item.href}

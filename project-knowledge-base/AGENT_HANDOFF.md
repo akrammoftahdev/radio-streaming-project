@@ -288,22 +288,15 @@ Test login at `https://egonair-frontend-kjvmkgy5va-ew.a.run.app/stream/login`
 **Confirmed vhost facts:**
 - [HISTORICAL] Primary domain was `egonair-frontend-729286791857.europe-west1.run.app` on old VPS. Current domain: `studio.egonair.com`
 - [HISTORICAL] SSL vhost and ServerAlias were configured for the Cloud Run domain. Now using studio.egonair.com.
-- [HISTORICAL] Document root was `/home/egyona/public_html` on old VPS. Current path: `/var/www/egonair/` on VPS 195.35.48.184
-- [HISTORICAL] whmapi1 was used on old cPanel VPS with user `egyona`. No longer applicable.
 
 **Proxy config artifact:** `group_55b_proxy_commands.md`
 
-> **HISTORICAL (Old egyona VPS + Cloud Run proxy):**
 >
 > **Include file target paths (root required):**
 > ```
-> /etc/apache2/conf.d/userdata/ssl/2_4/egyona/egonair-frontend-729286791857.europe-west1.run.app/egonair_stream.conf
-> /usr/local/apache/conf/userdata/ssl/2_4/egyona/egonair-frontend-729286791857.europe-west1.run.app/egonair_stream.conf
 > ```
 >
 > **Root commands sequence (WHM Terminal):**
-> 1. `mkdir -p /etc/apache2/conf.d/userdata/ssl/2_4/egyona/egonair-frontend-729286791857.europe-west1.run.app`
-> 2. `mkdir -p /usr/local/apache/conf/userdata/ssl/2_4/egyona/egonair-frontend-729286791857.europe-west1.run.app`
 > 3. Write proxy `.conf` file (see artifact)
 > 4. `httpd -t` — must say `Syntax OK` before proceeding
 > 5. `/usr/local/cpanel/bin/whmapi1 build_apache_conf`
@@ -336,7 +329,6 @@ LISTEN 127.0.0.1:3000   ← egonair-frontend (localhost only) ✓
 **PM2 process state:**
 - `egonair-frontend` ID=0, PID=920245, port 3000 (127.0.0.1 only), 0 restarts ✅
 - `egonair-audio` ID=1, PID=907642, port 4001 (* all interfaces), 0 restarts ✅
-- [HISTORICAL] PM2 was saved at `/home/egyona/.pm2/dump.pm2` on old VPS
 
 **Internal HTTP tests passed:**
 - `GET http://127.0.0.1:3000/stream/login` → `200 OK` ✅
@@ -373,13 +365,7 @@ SHOUTcast live: ENABLED
 - `/stream-ws` → `ws://127.0.0.1:4001` (WebSocket upgrade)
 
 **Critical facts:**
-- [HISTORICAL] cPanel user was `egyona` on old VPS. Current: root@195.35.48.184
-- [HISTORICAL] Release: `/home/egyona/apps/egonair-stream/releases/20260429-101531`
-- [HISTORICAL] Current symlink: `/home/egyona/apps/egonair-stream/current`
-- [HISTORICAL] prod.db: `/home/egyona/apps/egonair-stream/shared/prod.db`
-- [HISTORICAL] FFmpeg: `/home/egyona/bin/ffmpeg`
 - [HISTORICAL] Node 20: `source ~/.nvm/nvm.sh && nvm use 20`
-- [HISTORICAL] PM2 ecosystem: `/home/egyona/apps/egonair-stream/ecosystem.config.js`
 - Frontend port: 3000 (127.0.0.1 only)
 - Backend-audio port: 4001 (all interfaces — must be firewalled)
 - Secrets in place on VPS; not logged here
@@ -403,7 +389,6 @@ SHOUTcast live: ENABLED
 6. **SHOUTcast handshake is sensitive.** See `ISSUES_AND_FIXES.md FIX-003` for the exact format.
    Do not change line endings or HTTP version.
 
-7. **The database is PostgreSQL** on VPS (localhost:5432, database `egonair`). Previously SQLite during development. Do not introduce Firestore or Firebase.
 
 ---
 

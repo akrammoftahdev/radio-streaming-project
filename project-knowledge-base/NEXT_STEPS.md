@@ -145,7 +145,6 @@ These items require Group 1 to be complete (session lifecycle must be persisted 
 > - `cloudUrl?` (always null in MVP — reserved for future cloud phase)
 > - `createdAt DateTime @default(now())`
 > - Back-relations added: `User.recordings[]`, `LiveSession.recordings[]`, `BroadcastSchedule.recordings[]`
-> - Applied with `prisma db push` (non-interactive SQLite dev environment)
 > - Prisma Client auto-regenerated (v5.22.0)
 > - Verified: `recording.count()` = 0, create/read/delete test row succeeded, all 14 fields confirmed, back-relation navigation confirmed
 
@@ -339,7 +338,6 @@ See `FUTURE_REQUIREMENTS.md §2` for full specification.
 ### 5-CR-4 — Smoke test Cloud Run (admin login + dashboard)
 - Test login, admin dashboard — **do NOT test streaming yet**
 
-### 5-CR-5 — Database migration SQLite → PostgreSQL [COMPLETED — now on VPS]
 ### 5-CR-6 — Deploy backend-audio to GCE VM (blocked until 5-CR-4 passes)
 ### 5-CR-7 — [HISTORICAL] Cloud Run DNS (no longer in use)
 
@@ -387,7 +385,6 @@ See `FUTURE_REQUIREMENTS.md §2` for full specification.
 > **Risk:** 🟢 LOW
 
 ### 5.8 — PostgreSQL Migration [COMPLETED]
-> PostgreSQL migration completed. Database now runs on VPS (localhost:5432, database `egonair`). Previously used SQLite during development.
 
 ---
 
